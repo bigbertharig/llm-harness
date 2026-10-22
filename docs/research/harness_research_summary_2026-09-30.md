@@ -66,6 +66,9 @@ Optional later: a `request_profile` tool, gated behind operator approval.
 - The existing brain is mostly kept as the dispatcher. Its LLM planning parts (`brain_plan`, `brain_goal`) get demoted or retired. The 3090 is freed up for the leader, or to act as the strongest follower when the leader is in the cloud.
 
 ### 3.4 Rig profiles (stacking)
+
+(Placement design for profiles and for several jobs per card: llm-gateway `docs/DESIGN_NOTES.md`,
+"Sharing capacity", 2026-10-22.)
 | Profile | Layout | Good for |
 |---|---|---|
 | Swarm | 3090 = leader/strong model, each 6GB card = small follower | Many narrow tasks, best-of-N |
