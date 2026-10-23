@@ -4,18 +4,20 @@ The agent harness for the local rig: the software around one model. It builds th
 context, defines and runs tools, compacts long histories, keeps sessions, retries, and hands
 subtasks to other models. It does not know about GPUs.
 
-Status (2026-10-20): started. No code yet. The research and lessons below moved here from
-llm-gateway `docs/harness/` with their history. Build base: a fork of DeepSeek Harness, with
-OpenAI Codex as the reference design (`UPSTREAM.md`).
+Status (2026-10-23): started, no code yet; on GitHub since 2026-10-22. The research and lessons below
+moved here from llm-gateway `docs/harness/` with their history. Build base: a fork of DeepSeek Harness,
+with OpenAI Codex as the reference design (`UPSTREAM.md`).
+
+**Start here:** the reading order below, then the backlog.
 
 ## Where it sits
 
-| Repo | Owns |
-|---|---|
-| benchmarking | which models are good: `model_registry.json` (every model and how it loads), `model_roles.json` (which model per job), results |
-| llm-gateway | the machines and the API: rig manager (leases, placement, model fit, `rigctl`) and the OpenAI-compatible gateway on the Pi |
-| llm_orchestration | parallel batch work (brain + workers on a task queue), and the rig-side hardware scripts |
-| **llm-harness** | one model in an interactive loop: chat, tools, context, sessions, delegation |
+| Repo | Owns | Start at |
+|---|---|---|
+| [llm-gateway](https://github.com/bigbertharig/llm-gateway) | the machines and the API: rig manager (leases, placement, model fit, runs, `rigctl`) and the OpenAI-compatible gateway on the Pi | `docs/MANAGER.md` |
+| [llm_orchestration](https://github.com/bigbertharig/llm_orchestration) | parallel batch work (brain + workers on a task queue), the rig-side hardware scripts, CPU workers | `shared/workspace/CONTEXT.md` |
+| [benchmarking](https://github.com/bigbertharig/benchmarking) | which models are good: `model_registry.json` (every model and how it loads), `model_roles.json` (which model per job), suites, results | `NEW_MODEL_INTEGRATION.md`, `MODEL_LIBRARY.md` |
+| **llm-harness** (this one) | one model in an interactive loop: chat, tools, context, sessions, delegation | this README |
 
 llm_orchestration is the "load many models, do parallel work" mode. This repo is the "load one model
 and talk to it" mode, and later a leader that delegates to followers. Both sit on top of the gateway
