@@ -80,9 +80,22 @@ roles replaced them), the gateway moved from the rig to the Pi on 2026-10-17, an
 7. **Later:** durable leader on the rig side with remote attach (Codex `app-server-daemon` design),
    MCP server for the rig, a ledger of outcomes feeding back into the roster.
 
+## Boundaries
+
+All four repos run on their own; none reads another at runtime. Knowledge moves through two files per repo:
+
+- **In, from benchmarking (to build):** an importer in this repo reads the benchmarking model library
+  (registry and roles) and writes the harness's own model list, committed here; the harness runs from that
+  copy and keeps running on the last import without a benchmarking checkout. The pattern is llm-gateway's
+  `tools/generate_profiles.py`.
+- **Out, to benchmarking:** `lessons/` (see `lessons/README.md`): what the harness learns while it runs.
+  Benchmarking copies it when it wants (`scripts/active/collect_lessons.py`).
+- **At runtime:** only the gateway's OpenAI-compatible API.
+
 ## Rules
 
 - The harness talks to models only through the gateway API, never to llama-server ports or the rig.
-- Model names come from benchmarking roles and the registry, not from this repo.
+- Model names come from this repo's imported copy of the benchmarking roles and registry (the importer
+  above), never typed into code.
 - This repo is public: no keys, hostnames beyond the 10.0.0.x rig network, or private project notes.
 - Keep upstream code out of this repo until the fork exists; record what is used in `UPSTREAM.md`.
