@@ -10,6 +10,10 @@ with OpenAI Codex as the reference design (`UPSTREAM.md`).
 
 **Start here:** the reading order below, then the backlog.
 
+For candidate trials, use `docs/HARNESS_TEST_PLAYBOOK.md`: phased gates and receipts adapted from
+benchmarking's new-model integration process. The live lane requires a model already ready through
+the gateway route the candidate will use.
+
 ## Where it sits
 
 | Repo | Owns | Start at |
@@ -46,12 +50,21 @@ The gateway runs on the Pi (`pi-gateway.service`, 127.0.0.1:8080, OpenAI-compati
 
 ## Reading order
 
-1. `docs/research/harness_research_summary_2026-09-30.md`: the recommendation (DeepSeek Harness fork
+1. `docs/HARNESS_TEST_PLAYBOOK.md`: candidate onboarding, fixed-model comparison gates, and receipt shape.
+2. `docs/research/harness_mode_contract_2026-10-26.md`: current design direction: the gateway and rig
+   prepare model resources; the harness manages agent work within that fixed envelope.
+3. `docs/research/harness_candidate_survey_2026-10-26.md`: a preliminary shortlist and the comparison
+   needed before treating any candidate as the best fit for the rig.
+4. `docs/research/harness_comparison_test_design_2026-10-26.md`: a fixed-model conversation and
+   compaction comparison protocol; design only, with no model integration yet.
+5. `docs/research/async_tool_completion_contract_2026-10-27.md`: script output, durable completion
+   events, and agent wake-up without repeated model polling.
+6. `docs/research/harness_research_summary_2026-09-30.md`: the earlier recommendation (DeepSeek Harness fork
    and own as the backbone, Codex as cloud escalation and remote-attach reference, an MCP escape
    hatch), lessons, next steps.
-2. `docs/research/deepseek_harness_research_2026-08-14.md`: what DeepSeek Harness does and what stays
+7. `docs/research/deepseek_harness_research_2026-08-14.md`: what DeepSeek Harness does and what stays
    in our own code; its compaction section is the reference for long chats.
-3. `docs/lessons_bench_checkpoint.md`: what the bench-checkpoint runs showed about context size,
+8. `docs/lessons_bench_checkpoint.md`: what the bench-checkpoint runs showed about context size,
    compaction, prompt caching, retries and exploration, as harness requirements.
 
 The research names some files that have changed since: `model_task_library.json`,
@@ -73,8 +86,9 @@ roles replaced them), the gateway moved from the rig to the Pi on 2026-10-17, an
    such as Open WebUI already stores its own history; the harness log is for agent sessions.
 4. **Tool format per model:** run `bench-agent` (benchmarking `docker/bench-agent/`) on the offered
    profiles and pick native tool calls, text edits or GBNF per model.
-5. **Roster generator:** registry + roles + loaded profiles -> the pi-ai route `models` list and one
-   `tool-subagent` per lane, with model-identity checks (`/v1/models`).
+5. **Prepared roster adapter:** accept the gateway's ready model routes and served limits, then expose
+   them to the chosen harness as model options or subagents. Verify model identity and readiness; do not
+   generate a second offer from the benchmarking registry.
 6. **Gateway as dispatcher** (llm-gateway work): per-profile queue, queue depth in status, cancel on
    disconnect.
 7. **Later:** durable leader on the rig side with remote attach (Codex `app-server-daemon` design),
@@ -82,20 +96,20 @@ roles replaced them), the gateway moved from the rig to the Pi on 2026-10-17, an
 
 ## Boundaries
 
-All four repos run on their own; none reads another at runtime. Knowledge moves through two files per repo:
+The repos keep their own responsibilities. Benchmarking publishes tested model knowledge; the gateway's
+existing importer takes in that knowledge and publishes model routes. Gateway and orchestration prepare
+the rig and report which routes are actually ready. The harness consumes that prepared roster through a
+gateway API. It needs model identity, served context and output limits, tool-call capability, and
+availability; it does not need a separate copy of benchmarking's model library.
 
-- **In, from benchmarking (to build):** an importer in this repo reads the benchmarking model library
-  (registry and roles) and writes the harness's own model list, committed here; the harness runs from that
-  copy and keeps running on the last import without a benchmarking checkout. The pattern is llm-gateway's
-  `tools/generate_profiles.py`.
-- **Out, to benchmarking:** `lessons/` (see `lessons/README.md`): what the harness learns while it runs.
-  Benchmarking copies it when it wants (`scripts/active/collect_lessons.py`).
-- **At runtime:** only the gateway's OpenAI-compatible API.
+The harness writes what it learns to `lessons/` (see `lessons/README.md`). Benchmarking copies those
+lessons when requested (`scripts/active/collect_lessons.py`). At runtime the harness talks only to the
+gateway's inference and roster APIs, not to another repo's files or llama-server ports.
 
 ## Rules
 
 - The harness talks to models only through the gateway API, never to llama-server ports or the rig.
-- Model names come from this repo's imported copy of the benchmarking roles and registry (the importer
-  above), never typed into code.
+- Model routes come from the gateway's prepared roster, never typed into agent code or inferred from
+  benchmarking roles. A benchmark model ID used in a test plan is not automatically a ready gateway route.
 - This repo is public: no keys, hostnames beyond the 10.0.0.x rig network, or private project notes.
 - Keep upstream code out of this repo until the fork exists; record what is used in `UPSTREAM.md`.
