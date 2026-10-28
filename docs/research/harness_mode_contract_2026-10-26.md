@@ -1,7 +1,7 @@
 # Harness mode: prepared resources, agent-owned work
 
 Date: 2026-10-26
-Status: design direction for harness research; no implementation or candidate selected.
+Status: design direction; the gateway ready-roster API and harness reader are implemented, but no candidate is integrated.
 
 ## Requirement
 
@@ -18,7 +18,7 @@ The harness owns the AI work inside that envelope: agent and tool loops, convers
 
 1. A prepared roster identifies the allowed model/profile IDs, actual context window, output limit, tool-call format/capability, and current availability. The harness verifies the served model identity before relying on a route.
 2. Harness model requests use the gateway's stable inference API. The gateway and rig remain responsible for routing, execution, health, and hardware failure reporting.
-3. Harness mode must not silently trigger a cold load. The current gateway loads a published cold profile on first inference request, so an explicit ready-only route, session policy, or equivalent admission rule is needed before claiming strict passive operation.
+3. Harness mode must not silently trigger a cold load. Candidate adapters send `X-Require-Ready: true` on every gateway completion and tokenizer request; the gateway returns 409 `model_not_ready` for a cold route. Calls without that header keep the existing cold-load behavior.
 4. A changed or unavailable roster is reported to the harness. The harness may pause, fail, or choose another already offered model under its task policy; it does not repair hardware or reload models itself.
 5. The same resource contract should work with an unmodified external harness and a later custom harness. Candidate comparison should test this boundary rather than require each harness to understand the rig.
 
@@ -26,8 +26,10 @@ The roster is a runtime offer, not another model registry. Benchmarking remains 
 model settings and evidence. The gateway imports that knowledge and, together with orchestration,
 prepares the model routes. A read-only roster response should identify each allowed gateway route,
 its underlying benchmark model and profile, current readiness, actual served context and output cap,
-tokenizer route, and supported tool-call format when known. It must distinguish an advertised but cold
-model from one already ready. The harness may choose only among ready allowed routes; it never calls
+tokenizer route, and supported tool-call format when known. The first API version returns only ready
+routes; cold advertised models remain visible through `/v1/models`. The gateway returns `null` for
+output limit and tool-call format until verified metadata exists, so the harness must set a conservative
+task output ceiling and test tool behavior rather than assume either capability. The harness may choose only among ready allowed routes; it never calls
 model-management endpoints. If the roster changes mid-session, the harness pauses or applies its
 already-authorized fallback policy.
 

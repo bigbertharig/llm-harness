@@ -4,7 +4,7 @@ The agent harness for the local rig: the software around one model. It builds th
 context, defines and runs tools, compacts long histories, keeps sessions, retries, and hands
 subtasks to other models. It does not know about GPUs.
 
-Status (2026-10-23): started, no code yet; on GitHub since 2026-10-22. The research and lessons below
+Status (2026-10-28): research plus a read-only ready-roster client; no candidate harness integrated yet. The research and lessons below
 moved here from llm-gateway `docs/harness/` with their history. Build base: a fork of DeepSeek Harness,
 with OpenAI Codex as the reference design (`UPSTREAM.md`).
 
@@ -34,6 +34,7 @@ The gateway runs on the Pi (`pi-gateway.service`, 127.0.0.1:8080, OpenAI-compati
 | Endpoint | Use for the harness |
 |---|---|
 | `GET /v1/models` | the offered profiles as `gpu-rig/<id>`, each with `context_length` |
+| `GET /v1/rig/ready-roster` | currently ready offered routes, served identity and actual context; the harness preflight source |
 | `POST /v1/chat/completions`, `/v1/completions` | the model calls; a cold profile is loaded by the manager and the request is held until it is ready |
 | `POST /tokenize`, `/detokenize` | exact token counts, routed by model |
 | `GET /v1/rig/status` | per-profile state |
@@ -45,6 +46,11 @@ The gateway runs on the Pi (`pi-gateway.service`, 127.0.0.1:8080, OpenAI-compati
   `devstral-24b`, `nex-split`, `coder-7b`. Tool calling: gpt-oss-20b passed all six native tool-call
   probes; coder-7b writes calls as text; nex-split misses `attempt_completion`.
 - The gateway listens on loopback only and has no API key file yet; remote clients come later.
+- `python tools/ready_roster.py --gateway http://127.0.0.1:8080` fetches the versioned roster
+  without sending an LLM request. Set `LLM_GATEWAY_API_KEY` if gateway authentication is enabled.
+  An empty `data` array means no offered model is currently ready. The client does not select or
+  load a model. Candidate adapters must send `X-Require-Ready: true` on completions and tokenizer
+  calls; a cold or disappeared route then returns HTTP 409 instead of starting a load.
 - Model choice belongs to benchmarking roles (llm-gateway `tools/role_model.py` resolves a role to a
   model). Do not hard-code model names here.
 
