@@ -71,3 +71,5 @@ ready-only chat returned a visible answer (`Okay`, finish reason `stop`); a requ
 and lease were identical before and after. The full local receipt is
 `results/ready_roster_preflight_2026-10-28.json` on the Pi. This validates the gateway boundary,
 not any candidate's conversation, compaction, tools, or session behavior.
+
+The first actual candidate smoke is [Codex's rough live trial](research/first_candidate_trial_2026-10-28.md). It exercised one tool call, a resumed turn, and a cold-route refusal on the same prepared model. The note records observed costs and the emerging comparison measures. DeepSeek is second in the trial order; its Pi runtime/dependency prerequisites are still unresolved, so it has no agent result yet.

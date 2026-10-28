@@ -61,6 +61,7 @@ The gateway runs on the Pi (`pi-gateway.service`, 127.0.0.1:8080, OpenAI-compati
 ## Reading order
 
 1. `docs/HARNESS_TEST_PLAYBOOK.md`: candidate onboarding, fixed-model comparison gates, and receipt shape.
+   The first rough Codex result and DeepSeek setup check are in `docs/research/first_candidate_trial_2026-10-28.md`.
 2. `docs/research/harness_mode_contract_2026-10-26.md`: current design direction: the gateway and rig
    prepare model resources; the harness manages agent work within that fixed envelope.
 3. `docs/research/harness_candidate_survey_2026-10-26.md`: a preliminary shortlist and the comparison
