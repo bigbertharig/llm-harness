@@ -14,7 +14,11 @@ The [harness-mode contract](harness_mode_contract_2026-10-26.md) applies: the co
 1. **Offline contract stage, before model integration:** a deterministic OpenAI-compatible fake model service records requests and can return scripted usage, overflow, and transient errors. This checks each adapter's configuration, session/resume path, output limit, response handling, and that a candidate makes no model-management calls. It cannot grade semantic compaction quality.
 2. **Fixed-real-model stage, once the rig is ready:** use one externally prepared profile for every candidate. Confirm `/v1/models`, served model identity, actual context, tokenizer, and ready status before every run. Record rig state before and after; an unexpected load or model change invalidates the run. Start with a smaller validated window (16K or 32K) to exercise compaction cheaply, then repeat at the desired long window (for example Qwen 27B near 256K) only after gateway/orchestration validates that setup. The current `chat-27b` offer is smaller; 256K is a proposed test setup, not a present default.
 
-The gateway currently cold-loads a published profile on first request. A strict passive-mode result requires a ready-only admission policy. Pre-loading and checking state before/after is an interim approximation, and receipts must label it as such.
+The gateway cold-loads a published profile on requests without the ready-only header. Candidate
+drivers must send `X-Require-Ready: true` on completion and tokenizer calls; the gateway then
+returns 409 for a cold route. Preflight uses `GET /v1/rig/ready-roster` and checks the loaded
+profile before and after each run. A model can still disappear after a readiness check, which is
+reported as a failed run rather than repaired by the candidate.
 
 ## Common runner boundary
 

@@ -51,6 +51,10 @@ The gateway runs on the Pi (`pi-gateway.service`, 127.0.0.1:8080, OpenAI-compati
   An empty `data` array means no offered model is currently ready. The client does not select or
   load a model. Candidate adapters must send `X-Require-Ready: true` on completions and tokenizer
   calls; a cold or disappeared route then returns HTTP 409 instead of starting a load.
+- `python tools/live_preflight.py --route gpu-rig/chat-27b --model qwen3.6:27b --out results/preflight.json`
+  checks one externally prepared route through tokenization and chat, checks that a cold published
+  route is refused, and verifies the rig's loaded profile did not change. The receipt stays local
+  under `results/`; the test does not load or unload a model.
 - Model choice belongs to benchmarking roles (llm-gateway `tools/role_model.py` resolves a role to a
   model). Do not hard-code model names here.
 

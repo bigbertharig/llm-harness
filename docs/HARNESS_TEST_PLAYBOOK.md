@@ -52,8 +52,22 @@ The first short lane is Phases 0-3, then one delayed-job case from Phase 5. Only
 
 One runner should own fixtures, scoring, model-state snapshots, and receipts. Candidate drivers should be small and isolated. The runner should fail before invoking a candidate if model identity, readiness, context, or allowed endpoint differs from the pinned manifest. Save one case receipt containing: input/answer-key version; candidate and driver versions; model request metadata and usage; tool calls/results; finish reason; compaction and recovery events; verdict with explicit failed assertions; and full log references. Keep raw traces local unless reviewed for public release.
 
-The runner does not exist yet. Use the existing comparison design as the fixture specification, then implement an offline fake-model contract case and one native candidate driver before running a real-model lane. Do not treat an upstream unit test or a direct model benchmark as a harness comparison receipt.
+`tools/live_preflight.py` now covers the Phase 2 gateway boundary and writes a local JSON receipt. The candidate comparison runner does not exist yet. Use the existing comparison design as the fixture specification, then implement an offline fake-model contract case and one native candidate driver before running a candidate lane. Do not treat a gateway preflight, upstream unit test, or direct model benchmark as a harness comparison receipt.
 
 ## First preflight, 2026-10-28
 
 Reference checkouts exist for DeepSeek Harness, Codex, Pi, OpenCode, Hermes Agent, and Nanobot; `UPSTREAM.md` pins their commits. They are research clones, not installed harnesses. The gateway currently advertises `gpu-rig/chat-27b`, `coder-7b`, `coder-30b`, `devstral-24b`, `gpt-oss-20b`, and `nex-split`, but `/v1/rig/status` reports `bench` mode with `k2-v2-instruct:70b` ready at 8192 context. That is not a ready match for any advertised harness profile. The Phase 2 gate is therefore **not met**; no live candidate/model request was sent. First work is the offline runner/driver and a ready-route agreement with the gateway, while preserving the current benchmarking load.
+
+## First live gateway preflight, 2026-10-28
+
+With the user's authorization to use the idle rig, the Pi gateway was restarted with the ready-roster
+API. The earlier idle `k2-v2-instruct:70b` benchmark load was unloaded through `rigctl`; the manager
+then loaded offered `chat-27b` on GPU0. The roster identified `gpu-rig/chat-27b` as
+`qwen3.6:27b`, interactive profile, ready at an actual 65,536-token context.
+
+`tools/live_preflight.py` passed its first live run. Ready-only `/tokenize` returned four tokens;
+ready-only chat returned a visible answer (`Okay`, finish reason `stop`); a request for cold
+`gpu-rig/coder-7b` returned 409 `model_not_ready`. Rig profile ID, model, port, served context,
+and lease were identical before and after. The full local receipt is
+`results/ready_roster_preflight_2026-10-28.json` on the Pi. This validates the gateway boundary,
+not any candidate's conversation, compaction, tools, or session behavior.
