@@ -36,3 +36,24 @@ This measures the shared MCP delegation integration across harnesses. It does no
 ## Child prompt research to add later
 
 The user supplied a Claude cleanup-agent prompt as a useful example. It specifies the role and handoff, exact edit scope and exclusions, execution environment, baseline evidence, deterministic checks, and a concise report. A later study can compare past Claude, Codex, and other child-agent prompts with their actual outcomes, then turn the supported patterns into a short harness-owned prompt guide. Preserve provenance and failure examples; test prompt variants on fixed tasks before adopting a template. No old-chat scan was done in this pass.
+
+## Follow-up round and reliability finding
+
+The revised fixture gives the `coding` child a harness-owned role prompt and normalizes a valid numeric answer such as `42.0` to `42`; it rejects a wrong answer. The parent scorer accepts a correct final nonempty line while recording whether the entire answer was exactly the requested number. This separates successful delegation from response-format compliance. The model still sees a simple `agent_type` and `task` request; the controller handles prompt style, MCP invocation, ready-route waiting, receipts, and response checks. `tests/test_gateway_subagent.py` passed 3/3 after this change.
+
+The fresh six-harness run is `results/subagent_six_native_v5/subagents/matrix.json`, fixture SHA-256 `00a5eda3be222f4cf6bc6096dad52ba18d592ad55c90c54c47ac3d76b53e7a2c`. Every direct MCP baseline passed. Five of six native runs passed:
+
+| Harness | Native result | Exact parent format | Duration |
+|---|---:|---:|---:|
+| Pi | pass | yes | 5.72 s |
+| DeepSeek Harness | pass | yes | 7.31 s |
+| Nanobot | pass | yes | 8.41 s |
+| OpenCode | fail: no delegation call | no | 14.81 s |
+| OpenAI Codex | pass | yes | 12.05 s |
+| Hermes Agent | pass | no; ended with `42` | 30.75 s |
+
+OpenCode's MCP server connected with one tool, but the model ignored the explicit call instruction, invented an arithmetic problem, and returned `53`. An identical, separately preserved retry passed in `results/subagent_opencode_repeat_v6/subagents/opencode/summary.json` (10.69 s). This is intermittent tool avoidance in the tested model/controller pair; one pass is insufficient reliability evidence. The previous v3 receipt also records a strict false negative for Codex's valid `42.0` answer, and v4 records Hermes's correct final line with extra explanation. Those receipts motivated the normalization and separate format metric; they were not deleted. Both test routes were unloaded after v5, and the manager reported six free GPUs.
+
+## Next comparison design
+
+Run repeated trials per harness and report call rate, correct child result rate, final-answer rate, exact-format rate, latency distribution, and failure type. Pin the same parent model, model settings, child model, task, fixture hash, and ready-route state across harnesses where feasible. Then hold one harness fixed and vary parent size: a small model, approximately 30B, and a larger model. Keep hardware placement, quantization, context, and time limits in the receipt so a model-size effect is not confused with a harness difference. Use several tasks, including `research` and failure/timeout paths, before drawing a general ranking. Keep the deterministic direct MCP baseline before every native trial; a failed baseline invalidates that trial as a harness comparison.

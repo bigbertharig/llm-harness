@@ -5,7 +5,6 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import re
 import select
 import subprocess
 import sys
@@ -14,9 +13,11 @@ import time
 import comparison_mcp_matrix as matrix
 import comparison_short_control as common
 import comparison_web_search as web
+from subagent_contract import canonical_integer_answer, canonical_final_line
 
 ROOT = common.ROOT
 FIXTURE = ROOT / 'tools/fixtures/subagent_mcp.py'
+CONTRACT = ROOT / 'tools/subagent_contract.py'
 TASK = 'Solve the private arithmetic check and return the result.'
 PROMPT = ('Call the subagent MCP tool delegate_task exactly once with agent_type coding and '
           'task "Solve the private arithmetic check and return the result." '
@@ -66,7 +67,7 @@ def direct_control(server, out):
               'tool_exposed': {x['name'] for x in listed.get('tools', [])} == {'delegate_task'},
               'no_tool_error': not result.get('isError'),
               'hidden_question_answered': body.get('question') == 'What is 7 multiplied by 6? Return only the decimal number.'
-                  and body.get('child_answer', '').strip() == '42',
+                  and body.get('child_answer') == '42',
               'disjoint_gpus': bool(body.get('parent_gpu_ids')) and bool(body.get('child_gpu_ids'))
                   and set(body['parent_gpu_ids']).isdisjoint(body['child_gpu_ids']),
               'child_clean': body.get('child_exit_code') == 0 and body.get('roster_stable') is True}
@@ -96,7 +97,7 @@ def one(candidate, run_id, baseline_only=False):
     if not baseline['passed']:
         receipt = {'candidate': candidate, 'run_id': run_id, 'passed': False,
                    'baseline': baseline, 'native_withheld': True,
-                   'fixture_sha256': hashlib.sha256(FIXTURE.read_bytes()).hexdigest(),
+                   'fixture_sha256': hashlib.sha256(FIXTURE.read_bytes() + CONTRACT.read_bytes()).hexdigest(),
                    'duration_seconds': round(time.monotonic() - started, 2)}
         (out / 'summary.json').write_text(json.dumps(receipt, indent=2) + '\n')
         print(json.dumps({'candidate': candidate, 'passed': False,
@@ -124,18 +125,20 @@ def one(candidate, run_id, baseline_only=False):
               'requested_coding': len(calls) == 1 and calls[0].get('arguments', {}).get('agent_type') == 'coding',
               'task_supplied': len(calls) == 1 and bool(calls[0].get('arguments', {}).get('task')),
               'one_child_receipt': len(children) == 1,
-              'child_answer_42': child.get('answer', '').strip() == '42' and data.get('child_answer', '').strip() == '42',
+              'child_answer_42': canonical_integer_answer(child.get('answer', '')) == '42'
+                  and data.get('child_answer') == '42',
               'disjoint_gpus': bool(child.get('parent_gpu_ids')) and bool(child.get('child_gpu_ids'))
                   and set(child['parent_gpu_ids']).isdisjoint(child['child_gpu_ids']),
               'child_clean': child.get('exit_code') == 0 and child.get('roster_stable') is True
                   and not tool_result.get('isError'),
-              'parent_verified_answer': bool(re.search(r'\b42\b', answer)),
+              'parent_verified_answer': canonical_final_line(answer) == '42',
               'parent_clean': result.get('exit_code') == 0 and not result.get('errors')
                   and result.get('finish_reason') in ('stop', 'completed', 'process_exit_0')}
     receipt = {'candidate': candidate, 'run_id': run_id, 'passed': all(checks.values()),
-               'checks': checks, 'fixture_sha256': hashlib.sha256(FIXTURE.read_bytes()).hexdigest(),
+               'checks': checks, 'fixture_sha256': hashlib.sha256(FIXTURE.read_bytes() + CONTRACT.read_bytes()).hexdigest(),
                'baseline': baseline, 'parent_route': parent_route, 'child_route': child.get('child_route'),
                'parent_answer': answer, 'parent_finish': result.get('finish_reason'),
+               'parent_format_exact': canonical_integer_answer(answer) == '42',
                'parent_exit_code': result.get('exit_code'), 'parent_errors': result.get('errors'),
                'child_receipts': [str(path) for path in children],
                'duration_seconds': round(time.monotonic() - started, 2)}
@@ -159,6 +162,7 @@ def aggregate(run_id):
               'candidates': {name: {'passed': row.get('passed', False),
                   'baseline_passed': row.get('baseline', {}).get('passed', False),
                   'parent_route': row.get('parent_route'), 'child_route': row.get('child_route'),
+                  'parent_format_exact': row.get('parent_format_exact'),
                   'failed_checks': [key for key, ok in row.get('checks', {}).items() if not ok],
                   'duration_seconds': row.get('duration_seconds')}
                   for name, row in receipts.items()}}

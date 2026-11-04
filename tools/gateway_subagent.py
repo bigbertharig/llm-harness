@@ -19,6 +19,7 @@ import time
 from urllib.request import Request, urlopen
 
 from ready_roster import fetch_ready_roster
+from subagent_contract import child_system_prompt
 
 HOME = Path('/home/bryan')
 NODE = HOME / '.local/opt/node-v24.14.0-linux-arm64/bin/node'
@@ -75,7 +76,7 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
     command = [str(NODE), str(PI_CLI), '--mode', 'rpc', '--offline',
                '--no-tools', '--no-extensions', '--no-skills', '--no-prompt-templates',
                '--no-mcp', '--no-context-files', '--session-dir', str(out / 'sessions'),
-               '--system-prompt', 'You are a bounded child agent. Complete only the assigned task and give a concise result.',
+               '--system-prompt', child_system_prompt(agent_type),
                '--provider', 'rig', '--model', child['route']]
     started = time.monotonic()
     answer, error = '', None

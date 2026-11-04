@@ -8,9 +8,19 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from gateway_subagent import resolve_child
+from subagent_contract import canonical_integer_answer, canonical_final_line, child_system_prompt
 
 
 class GatewaySubagentRequest(unittest.TestCase):
+    def test_typed_prompt_and_numeric_normalization(self):
+        self.assertIn('coding child agent', child_system_prompt('coding'))
+        self.assertIn('research child agent', child_system_prompt('research'))
+        self.assertEqual(canonical_integer_answer('42.0'), '42')
+        self.assertEqual(canonical_integer_answer('42'), '42')
+        self.assertIsNone(canonical_integer_answer('41.5'))
+        self.assertIsNone(canonical_integer_answer('The answer is 42'))
+        self.assertEqual(canonical_final_line('Checked 7 times 6.\n\n42'), '42')
+
     def test_harness_sends_capability_without_gpu_or_model(self):
         class Reply:
             def __enter__(self):

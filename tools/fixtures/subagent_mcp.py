@@ -10,6 +10,7 @@ from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from gateway_subagent import run_child
+from subagent_contract import canonical_integer_answer
 
 QUESTION = 'What is 7 multiplied by 6? Return only the decimal number.'
 ANSWER = '42'
@@ -57,13 +58,15 @@ def main():
                         out=receipt_dir / uuid4().hex,
                         gateway=os.environ.get('SUBAGENT_GATEWAY', 'http://127.0.0.1:8080'),
                         max_tokens=96, timeout_s=90)
-                    data = {'question': QUESTION, 'child_answer': receipt['answer'],
+                    canonical = canonical_integer_answer(receipt['answer'])
+                    data = {'question': QUESTION, 'child_answer': canonical,
+                            'child_raw_answer': receipt['answer'],
                             'parent_gpu_ids': receipt['parent_gpu_ids'],
                             'child_gpu_ids': receipt['child_gpu_ids'],
                             'child_route': receipt['child_route'],
                             'child_exit_code': receipt['exit_code'],
                             'roster_stable': receipt['roster_stable']}
-                    failed = receipt['exit_code'] != 0 or not receipt['roster_stable']
+                    failed = receipt['exit_code'] != 0 or not receipt['roster_stable'] or canonical != ANSWER
                 except Exception as exc:
                     data, failed = {'error': f'{type(exc).__name__}: {exc}'}, True
             log({'method': 'tool/result', 'tool': 'delegate_task', 'data': data, 'isError': failed})
