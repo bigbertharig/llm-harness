@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Stdio MCP adapter for one native child agent on a separate ready GPU route."""
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -9,10 +10,17 @@ from uuid import uuid4
 
 from gateway_subagent import run_child
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--parent-route', default=os.environ.get('SUBAGENT_PARENT_ROUTE'))
+parser.add_argument('--receipt-dir', default=os.environ.get('SUBAGENT_RECEIPT_DIR'))
+config = parser.parse_args()
+if not config.parent_route or not config.receipt_dir:
+    parser.error('--parent-route and --receipt-dir are required (or set SUBAGENT_PARENT_ROUTE and SUBAGENT_RECEIPT_DIR)')
+
 TOOL = {'name': 'delegate_task',
         'description': 'Give one bounded task to a separate child agent. The manager prepares a model on another GPU if needed. The child has no delegation tool and returns its answer with a route receipt. Verify the answer before relying on it.',
         'inputSchema': {'type': 'object', 'properties': {
-            'agent_type': {'type': 'string', 'enum': ['coding', 'research', 'general']},
+            'agent_type': {'type': 'string', 'enum': ['coding', 'research']},
             'task': {'type': 'string', 'minLength': 1, 'maxLength': 4000}},
             'required': ['agent_type', 'task'], 'additionalProperties': False}}
 
@@ -36,13 +44,13 @@ def handle(packet):
         params = packet.get('params') or {}
         task = (params.get('arguments') or {}).get('task')
         agent_type = (params.get('arguments') or {}).get('agent_type')
-        if (params.get('name') != 'delegate_task' or agent_type not in ('coding', 'research', 'general')
+        if (params.get('name') != 'delegate_task' or agent_type not in ('coding', 'research')
                 or not isinstance(task, str) or not 1 <= len(task) <= 4000):
             respond(id, {'isError': True, 'content': [{'type': 'text', 'text': 'invalid delegate_task arguments'}]})
             return
         try:
-            parent = os.environ['SUBAGENT_PARENT_ROUTE']
-            root = Path(os.environ['SUBAGENT_RECEIPT_DIR'])
+            parent = config.parent_route
+            root = Path(config.receipt_dir)
             receipt = run_child(parent_id=parent, agent_type=agent_type, prompt=task,
                                 out=root / uuid4().hex,
                                 gateway=os.environ.get('SUBAGENT_GATEWAY', 'http://127.0.0.1:8080'))

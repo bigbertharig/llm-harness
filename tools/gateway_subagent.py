@@ -139,7 +139,7 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--parent-route', required=True)
-    parser.add_argument('--agent-type', required=True, choices=['coding', 'research', 'general'])
+    parser.add_argument('--agent-type', required=True, choices=['coding', 'research'])
     parser.add_argument('--gateway', default='http://127.0.0.1:8080')
     parser.add_argument('--out', required=True, type=Path)
     parser.add_argument('--max-tokens', type=int, default=512)

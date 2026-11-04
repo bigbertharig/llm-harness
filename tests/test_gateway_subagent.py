@@ -1,6 +1,8 @@
 import json
 import sys
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -24,6 +26,20 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertEqual(json.loads(request.data), {
             'parent_route': 'gpu-rig/chat-27b', 'agent_type': 'coding'})
         self.assertEqual(result['route'], 'gpu-rig/coder-7b')
+
+    def test_mcp_launch_arguments_expose_simple_tool(self):
+        server = Path(__file__).resolve().parents[1] / 'tools/gateway_subagent_mcp.py'
+        with tempfile.TemporaryDirectory() as temp:
+            packet = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}) + '\n'
+            proc = subprocess.run([sys.executable, str(server), '--parent-route', 'gpu-rig/parent',
+                                   '--receipt-dir', temp], input=packet, text=True,
+                                  capture_output=True, timeout=5)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        tools = json.loads(proc.stdout)['result']['tools']
+        self.assertEqual([tool['name'] for tool in tools], ['delegate_task'])
+        self.assertEqual(set(tools[0]['inputSchema']['properties']), {'agent_type', 'task'})
+        self.assertEqual(tools[0]['inputSchema']['properties']['agent_type']['enum'],
+                         ['coding', 'research'])
 
 
 if __name__ == '__main__':
