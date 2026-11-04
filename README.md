@@ -48,7 +48,7 @@ The gateway runs on the Pi (`pi-gateway.service`, 127.0.0.1:8080, OpenAI-compati
 | `GET /v1/models` | the offered profiles as `gpu-rig/<id>`, each with `context_length` |
 | `GET /v1/rig/ready-roster` | currently ready offered routes, served identity and actual context; the harness preflight source |
 | `POST /v1/chat/completions`, `/v1/completions` | the model calls; a cold profile is loaded by the manager and the request is held until it is ready |
-| `POST /tokenize`, `/detokenize` | exact token counts, routed by model |
+| `POST /tokenize`, `/detokenize` | exact counts where the ready route advertises a tokenizer path; Strata currently does not |
 | `GET /v1/rig/status` | per-profile state |
 | `/v1/manager/...` | leases, claims, model loads (llm-gateway `docs/MANAGER.md`) |
 
@@ -80,6 +80,8 @@ The gateway runs on the Pi (`pi-gateway.service`, 127.0.0.1:8080, OpenAI-compati
    `docs/research/harness_suite_coverage_2026-11-02.md`.
 2. `docs/research/harness_mode_contract_2026-10-26.md`: current design direction: the gateway and rig
    prepare model resources; the harness manages agent work within that fixed envelope.
+   See [Strata integration](docs/research/strata_harness_integration_2026-11-03.md)
+   for optional tokenization and update boundaries.
 3. `docs/research/harness_candidate_survey_2026-10-26.md`: a preliminary shortlist and the comparison
    needed before treating any candidate as the best fit for the rig.
 4. `docs/research/harness_comparison_test_design_2026-10-26.md`: a fixed-model conversation and

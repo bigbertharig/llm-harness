@@ -26,12 +26,19 @@ The roster is a runtime offer, not another model registry. Benchmarking remains 
 model settings and evidence. The gateway imports that knowledge and, together with orchestration,
 prepares the model routes. A read-only roster response should identify each allowed gateway route,
 its underlying benchmark model and profile, current readiness, actual served context and output cap,
-tokenizer route, and supported tool-call format when known. The first API version returns only ready
+tokenizer route when available, and supported tool-call format when known. The first API version returns only ready
 routes; cold advertised models remain visible through `/v1/models`. The gateway returns `null` for
 output limit and tool-call format until verified metadata exists, so the harness must set a conservative
 task output ceiling and test tool behavior rather than assume either capability. The harness may choose only among ready allowed routes; it never calls
-model-management endpoints. If the roster changes mid-session, the harness pauses or applies its
-already-authorized fallback policy.
+model-management endpoints. If the roster changes mid-session, the harness pauses or chooses another already offered
+route under its task policy.
+
+The ready roster may report a null tokenizer_path. The current Strata route has no
+gateway /tokenize endpoint. A harness must accept that route as ready, use a
+validated model-compatible local tokenizer or a conservative token estimate,
+reserve output space, and verify actual usage and finish reasons. It must not
+treat null as a URL or assume a llama tokenizer describes Strata's accounting.
+See the [Strata integration note](strata_harness_integration_2026-11-03.md).
 
 ## Research implications
 

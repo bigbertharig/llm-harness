@@ -45,10 +45,15 @@ def run(base: str, route_id: str, expected_model: str) -> dict:
     status_code, before = call(base, "/v1/rig/status")
     if status_code != 200:
         raise RuntimeError(f"rig status returned {status_code}")
-    token_status, tokens = call(base, route["tokenizer_path"],
-                                {"model": route_id, "content": "ready roster preflight"})
-    if token_status != 200 or not isinstance(tokens.get("tokens"), list):
-        raise RuntimeError(f"ready-only tokenize returned {token_status}: {tokens}")
+    token_count = None
+    tokenizer_check = "unavailable"
+    if route.get("tokenizer_path"):
+        token_status, tokens = call(base, route["tokenizer_path"],
+                                    {"model": route_id, "content": "ready roster preflight"})
+        if token_status != 200 or not isinstance(tokens.get("tokens"), list):
+            raise RuntimeError(f"ready-only tokenize returned {token_status}: {tokens}")
+        token_count = len(tokens["tokens"])
+        tokenizer_check = "passed"
     chat_status, chat = call(base, "/v1/chat/completions", {
         "model": route_id, "messages": [{"role": "user", "content": "Reply with one short word."}],
         "max_tokens": 48, "temperature": 0,
@@ -76,7 +81,8 @@ def run(base: str, route_id: str, expected_model: str) -> dict:
     if after_status != 200 or profile_signature(before) != profile_signature(after):
         raise RuntimeError("loaded rig profile changed during preflight")
     return {
-        "route": route, "cold_route": cold, "token_count": len(tokens["tokens"]),
+        "route": route, "cold_route": cold, "token_count": token_count,
+        "tokenizer_check": tokenizer_check,
         "chat_answer": answer[:200], "finish_reason": choice.get("finish_reason"),
         "cold_status": cold_status, "profiles_before": profile_signature(before),
         "profiles_after": profile_signature(after), "passed": True,
