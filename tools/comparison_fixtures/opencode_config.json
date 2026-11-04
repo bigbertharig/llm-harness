@@ -1,0 +1,33 @@
+{
+  "model": "rig/coder30b",
+  "update": "disable",
+  "providers": {
+    "rig": {
+      "name": "Ready rig route",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://127.0.0.1:8080/v1",
+        "apiKey": "ready-only-local",
+        "headers": {"X-Require-Ready": "true"},
+        "encoding": "none"
+      },
+      "models": {
+        "coder30b": {
+          "modelID": "gpu-rig/coder-30b",
+          "name": "Ready Qwen3 Coder 30B",
+          "capabilities": {"tools": false, "input": ["text"], "output": ["text"]},
+          "limit": {"context": 32768, "output": 1536}
+        }
+      }
+    }
+  },
+  "agents": {
+    "chatprobe": {
+      "description": "Conversation-only compaction probe",
+      "mode": "primary",
+      "system": "You are a concise chat assistant. Follow the user instructions.",
+      "permissions": [{"action": "*", "resource": "*", "effect": "deny"}]
+    }
+  },
+  "compaction": {"auto": true}
+}

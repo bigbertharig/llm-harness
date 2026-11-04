@@ -1,0 +1,18 @@
+- id: llm-pi-ai
+  config:
+    providers:
+      rig-gateway:
+        apiKeyEnv: DSH_GATEWAY_DUMMY_KEY
+        api: openai-completions
+        baseURL: http://127.0.0.1:8080/v1
+        headers:
+          X-Require-Ready: 'true'
+        models:
+          - id: gpu-rig/coder-30b
+            contextWindow: 32768
+            maxTokens: 1536
+
+- id: agent-default-model
+  config:
+    provider: rig-gateway
+    model: gpu-rig/coder-30b

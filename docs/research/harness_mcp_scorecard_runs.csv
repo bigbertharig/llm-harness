@@ -1,0 +1,37 @@
+run_id,candidate,server,discovery,tool_call,model_visible_result,verdict,receipt
+baseline-research,Direct MCP,Research,Pass,Pass,Text and structured content,Pass,results/local_mcp_2026-10-29/research_call.json
+baseline-geometry,Direct MCP,Geometry,Pass,Pass,Structured content with empty text content,Pass,results/local_mcp_2026-10-29/geometry_call.json
+deepseek-research,DeepSeek Harness,Research,Pass,Pass,Text answer grounded in tool result,Pass,results/local_mcp_2026-10-29/deepseek/research.jsonl
+deepseek-geometry,DeepSeek Harness,Geometry,Pass,Pass,Tool result shown as no output,Fail,results/local_mcp_2026-10-29/deepseek/geometry.jsonl
+nanobot-research,Nanobot,Research,Pass,Pass,Text answer grounded in tool result,Pass,results/local_mcp_2026-10-29/nanobot/summary.json
+nanobot-geometry,Nanobot,Geometry,Pass,Pass,Structured-only result hidden from model,Fail,results/local_mcp_2026-10-29/nanobot/summary.json
+opencode-local,OpenCode,Both,Pass,Not reached,CLI stalled before inference even without MCP,Partial,results/local_mcp_2026-10-29/opencode/
+pi-local,Pi,Both,Pass,Not reached,CLI print stalled before inference,Partial,results/local_mcp_2026-10-29/pi/
+cloud-baseline-daedalmap,Direct MCP,DaedalMap free,Pass,Pass,Structured content only; first family administrative,Pass,results/cloud_mcp_2026-10-29/baseline.json
+cloud-baseline-deepwiki,Direct MCP,DeepWiki,Pass,Pass,Text and structured content,Pass,results/cloud_mcp_2026-10-29/baseline.json
+cloud-baseline-openai,Direct MCP,OpenAI Docs,Pass,Pass,Text content,Pass,results/cloud_mcp_2026-10-29/baseline.json
+cloud-nanobot-daedalmap,Nanobot,DaedalMap free,Pass,Pass,Structured-only catalog hidden from model,Fail,results/cloud_mcp_2026-10-29/nanobot/summary.json
+cloud-nanobot-deepwiki,Nanobot,DeepWiki,Pass,Pass,Grounded heading,Pass,results/cloud_mcp_2026-10-29/nanobot/summary.json
+cloud-nanobot-openai,Nanobot,OpenAI Docs,Pass,Pass,Exact first-hit URL,Pass,results/cloud_mcp_2026-10-29/nanobot/summary.json
+cloud-deepseek-daedalmap,DeepSeek Harness,DaedalMap free,Pass,Pass,Structured-only catalog hidden; later burst limit,Fail,results/cloud_mcp_2026-10-29/deepseek/daedalmap.jsonl
+cloud-deepseek-deepwiki,DeepSeek Harness,DeepWiki,Pass,Pass,Grounded heading,Pass,results/cloud_mcp_2026-10-29/deepseek/deepwiki.jsonl
+cloud-deepseek-openai,DeepSeek Harness,OpenAI Docs,Pass,Pass,Exact first-hit URL,Pass,results/cloud_mcp_2026-10-29/deepseek/openai_docs.jsonl
+"direct-nanobot-daedalmap","Nanobot",DaedalMap free,Pass,Pass,"Structured-only catalog hidden from model",Fail,"results/cloud_mcp_direct_2026-10-29/nanobot/summary.json"
+"direct-nanobot-deepwiki","Nanobot",DeepWiki,Pass,Pass,"Grounded heading",Pass,"results/cloud_mcp_direct_2026-10-29/nanobot/summary.json"
+"direct-nanobot-openai","Nanobot","OpenAI Docs",Pass,Pass,Exact first-hit URL,Pass,"results/cloud_mcp_direct_2026-10-29/nanobot/summary.json"
+direct-deepseek-daedalmap,"DeepSeek Harness",DaedalMap free,Pass,Pass,"Catalog empty to model; resource fallback ended max-tokens",Fail,"results/cloud_mcp_direct_2026-10-29/deepseek/daedalmap.jsonl"
+direct-deepseek-deepwiki,"DeepSeek Harness",DeepWiki,Pass,Pass,"Grounded heading",Pass,"results/cloud_mcp_direct_2026-10-29/deepseek/deepwiki.jsonl"
+"direct-deepseek-openai","DeepSeek Harness","OpenAI Docs",Pass,Pass,Exact first-hit URL,Pass,"results/cloud_mcp_direct_2026-10-29/deepseek/openai_docs.jsonl"
+tool-v1-baseline,Direct MCP,Local marker fixture,Pass,Pass,Text and structured-only response shapes,Pass,results/comparison_tool_use_2026-11-02_v1/baseline/text/summary.json
+tool-v1-pi-text,Pi,Local marker text,Pass,Pass,Exact marker,Pass,results/comparison_tool_use_2026-11-02_v1_pi_tools/pi/text/summary.json
+tool-v1-pi-structured,Pi,Local marker structured-only,Pass,Pass,Exact marker,Pass,results/comparison_tool_use_2026-11-02_v1_struct/pi/structured/summary.json
+tool-v1-deepseek-text,DeepSeek Harness,Local marker text,Pass,Pass,Exact marker,Pass,results/comparison_tool_use_2026-11-02_v1/deepseek/text/summary.json
+tool-v1-deepseek-structured,DeepSeek Harness,Local marker structured-only,Pass,Pass,Result hidden from model,Fail,results/comparison_tool_use_2026-11-02_v1_struct/deepseek/structured/summary.json
+tool-v1-opencode-text,OpenCode,Local marker text,Pass,Fail,No call; fabricated answer,Fail,results/comparison_tool_use_2026-11-02_v1_opencode_direct/opencode/text/summary.json
+tool-v1-opencode-structured,OpenCode,Local marker structured-only,Pass,Fail,No call,Fail,results/comparison_tool_use_2026-11-02_v1_struct/opencode/structured/summary.json
+tool-v1-repeat-pi-text,Pi,Local marker text,Pass,Pass,Exact marker,Pass,results/comparison_tool_use_2026-11-02_v1_repeat/pi/text/summary.json
+tool-v1-repeat-pi-structured,Pi,Local marker structured-only,Pass,Pass,Exact marker,Pass,results/comparison_tool_use_2026-11-02_v1_repeat/pi/structured/summary.json
+tool-v1-repeat-deepseek-text,DeepSeek Harness,Local marker text,Pass,Pass,Exact marker,Pass,results/comparison_tool_use_2026-11-02_v1_repeat/deepseek/text/summary.json
+tool-v1-repeat-deepseek-structured,DeepSeek Harness,Local marker structured-only,Pass,Pass,Result hidden from model,Fail,results/comparison_tool_use_2026-11-02_v1_repeat/deepseek/structured/summary.json
+tool-v1-repeat-opencode-text,OpenCode,Local marker text,Pass,Fail,No call; fabricated answer,Fail,results/comparison_tool_use_2026-11-02_v1_repeat/opencode/text/summary.json
+tool-v1-repeat-opencode-structured,OpenCode,Local marker structured-only,Pass,Fail,No call,Fail,results/comparison_tool_use_2026-11-02_v1_repeat/opencode/structured/summary.json

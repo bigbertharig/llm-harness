@@ -1,0 +1,19 @@
+{
+  "providers": {
+    "rig": {
+      "baseUrl": "http://127.0.0.1:8080/v1",
+      "api": "openai-completions",
+      "apiKey": "ready-only-local",
+      "headers": {"X-Require-Ready": "true"},
+      "models": [{
+        "id": "gpu-rig/coder-30b",
+        "name": "Ready Qwen3 Coder 30B",
+        "reasoning": false,
+        "contextWindow": 32768,
+        "maxTokens": 1536,
+        "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+        "compat": {"maxTokensField": "max_tokens"}
+      }]
+    }
+  }
+}

@@ -4,7 +4,7 @@ The agent harness for the local rig: the software around one model. It builds th
 context, defines and runs tools, compacts long histories, keeps sessions, retries, and hands
 subtasks to other models. It does not know about GPUs.
 
-Status (2026-10-28): research plus a read-only ready-roster client; no candidate harness integrated yet. The research and lessons below
+Status (2026-11-02): research, a read-only ready-roster client, a frozen three-candidate short-control runner, and a six-candidate MCP comparison across six servers; no candidate harness integrated yet. The research and lessons below
 moved here from llm-gateway `docs/harness/` with their history. Build base: a fork of DeepSeek Harness,
 with OpenAI Codex as the reference design (`UPSTREAM.md`).
 
@@ -26,6 +26,18 @@ the gateway route the candidate will use.
 llm_orchestration is the "load many models, do parallel work" mode. This repo is the "load one model
 and talk to it" mode, and later a leader that delegates to followers. Both sit on top of the gateway
 and never touch cards directly. One user (the operator); no multi-user features.
+
+## Current deployment
+
+The gateway service and harness trials run on the Pi. The gateway is the user-facing routing layer;
+it already exposes the prepared model roster and inference API. The harness
+owns agent sessions, context, tools, and controls, and calls that gateway API. The rig runs the
+hardware-facing orchestration scripts and llama-server processes; orchestration owns model loading,
+placement, and GPU monitoring. The gateway reaches the rig over the private rig network.
+
+This placement is the current deployment, not a requirement that a future harness process share the
+Pi. The API boundary is what matters: harness code consumes ready model routes and never controls
+GPU or llama-server lifecycle.
 
 ## What it builds on (as of 2026-10-20)
 
@@ -62,6 +74,10 @@ The gateway runs on the Pi (`pi-gateway.service`, 127.0.0.1:8080, OpenAI-compati
 
 1. `docs/HARNESS_TEST_PLAYBOOK.md`: candidate onboarding, fixed-model comparison gates, and receipt shape.
    The first rough Codex result and DeepSeek setup check are in `docs/research/first_candidate_trial_2026-10-28.md`.
+   Frozen short-chat and local MCP tool-use pilots are in `docs/research/short_control_trial_2026-11-02.md`
+   and `docs/research/tool_use_trial_2026-11-02.md`. The six-server follow-up is
+   `docs/research/mcp_matrix_trial_2026-11-02.md`; the current six-harness lane register is
+   `docs/research/harness_suite_coverage_2026-11-02.md`.
 2. `docs/research/harness_mode_contract_2026-10-26.md`: current design direction: the gateway and rig
    prepare model resources; the harness manages agent work within that fixed envelope.
 3. `docs/research/harness_candidate_survey_2026-10-26.md`: a preliminary shortlist and the comparison

@@ -1,0 +1,28 @@
+# Six-harness test coverage
+
+Updated 2026-11-02. This is a coverage register, not a combined rank. The six candidates are Pi, DeepSeek Harness, OpenCode, Nanobot, OpenAI Codex, and Hermes Agent. OpenCode and OpenAI Codex are different harnesses.
+
+| Lane | Same frozen suite run for all six? | Current evidence | Next gate |
+|---|---|---|---|
+| Short conversation and resume | Yes, one or more runs each | Five passed their strict control; Hermes twice retained all facts but returned `ACK.` instead of exact `ACK` | Repeat Codex/Nanobot to match the original three-run reliability sample; investigate Hermes format compliance |
+| Local and online MCP tools | Yes, 12 cases each; Hermes separate 27B/65K block | All direct baselines passed; five candidates on 30B/32K, Hermes on 27B/65K | Trace Codex/OpenCode native tool requests; rerun Geometry argument/result cases with a gateway tool-call control |
+| Live web search | Yes, four questions each; Hermes separate block | 24/24 direct baselines passed; URL yield, relevance, backend and candidate latency, and rate signals recorded | Add controlled concurrency and a longer rate-limit window; run SearXNG when a real endpoint is present |
+| Search → CPU fetch → cited answer | Direct component control only | SearXNG-compatible JSON fixture plus actual `llm_orchestration` CPU scraper passed 6/6 checks | Create a two-tool native harness fixture with page-only answer key and source citation |
+| Compaction and long context | Candidate-specific exploratory runs for all six, no matched six-candidate fixture | See [scorecard](harness_scorecard_2026-10-29.md); models, policies, and context differ | Freeze matching native and tuned lanes per model block, with repeated fact retention and completed-checkpoint checks |
+| Subagents and delegation | No shared suite | No comparable receipts | Define a deterministic child-task contract, depth/budget cap, and parent verification key |
+| Asynchronous jobs and wake-up | No shared suite | Design in [async completion contract](async_tool_completion_contract_2026-10-27.md) | Test one delayed completion with durable receipt and no model polling |
+| Denial, restart, and failure recovery | Candidate-specific probes only | Some Codex/OpenCode/Hermes resume evidence | Freeze permission-denial, nonzero tool exit, interrupted-session resume, and cold-route rejection cases |
+
+The shared runner boundary is in [candidate controllers](../../tools/candidate_controllers/README.md). Controllers own only native setup and event translation; the shared runners own tasks, direct baselines, score rules, and receipts. Pinned upstream harness source checkouts were unchanged by this pass. A new harness version should get a new run ID and controller compatibility check, leaving the old receipt intact.
+
+## Codex compatibility follow-up, 2026-11-02
+
+The isolated Codex controller now translates namespaced Responses MCP tools to the flat function surface supported by the local rig route and explicitly approves its one enabled test-server tool for noninteractive runs. No upstream Codex files were edited. The native marker integration passes with one actual call. Repeating the frozen lanes yielded **8/12 MCP** cases and **3/4 web-search** cases on Qwen3 Coder 30B/32K, versus the earlier 0/12 and 0/4. Details and limitations are in `docs/research/mcp_matrix_trial_2026-11-02.md` and the corresponding `codex_integrated_*` and `codex_search_fixed_2026-11-02` receipts.
+
+The new `mcp_servers/searxng/server.py` contract passes 3/3 deterministic checks. Live SearXNG coverage is pending an endpoint with JSON search enabled; see `docs/research/searxng_mcp.md`.
+
+The SearXNG MCP is now selectable in the shared four-question web-search runner with `--backend searxng`; the six candidate controllers receive the same standalone MCP command and the direct baseline gate runs first. SearXNG receipts live in their own `results/<run-id>/searxng/` tree. The combined adapter contract receipt `results/harness_adapter_contracts_2026-11-02.txt` passed 7/7 checks (Codex namespace translation 2, SearXNG MCP 3, runner integration 2). Live SearXNG quality and rate-limit measurements remain pending a configured instance with JSON output enabled.
+
+The SearXNG upgrade preserves bounded result provenance, search suggestions and corrections, unresponsive-engine reasons, and degraded-search signals; it distinguishes HTTP 403 from 429 and records latency on failures. The MCP, comparison, and Codex namespace contracts passed **8/8** in `results/searxng_upgrade_contract_2026-11-02.txt`. Those are deterministic fixtures; the later live evidence is recorded below. The [SearXNG MCP note](searxng_mcp.md) records the design evidence and a future multi-instance pool option.
+
+The Pi now hosts a private JSON-enabled SearXNG endpoint on `127.0.0.1:8888`. The tuned direct provider control passed **4/4** paced queries with ten URLs each, expected official domains at rank one, and no engine health signals in that short sample (`results/search_provider_searxng_pi_tuned_paced_2026-11-02.json`). The tuned native Pi-harness trial using GPT-OSS 20B on GTX 1060 GPUs 1–4 passed **4/4** end-to-end search cases (`results/searxng_1060_gptoss_tuned_four_v1/searxng/pi/batch_summary.json`). Earlier live calls exposed Brave rate limits and DuckDuckGo CAPTCHA; the benchmark now records those upstream failures, and the comparison runner separates backend health from harness behavior. Other harnesses and a second 1060 model have not yet run against live SearXNG. The 3090 is released for separate benchmarks. The gateway repo has a tested, staged GPU-pinned published-load change; its live service has not been restarted.

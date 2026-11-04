@@ -1,0 +1,26 @@
+run_id,candidate,case,model,context_tokens,policy,output_cap_tokens,complete_compactions,failed_compactions,facts_correct,facts_total,verdict,receipt_dir,note
+codex-7b-16k-native,Codex,native_boundary,qwen2.5-coder:7b,16384,native,,1,0,3,3,fail,results/compaction_16k_2026-10-28/,second checkpoint led to model request overflow
+deepseek-7b-16k-tuned,DeepSeek,tuned_repeated,qwen2.5-coder:7b,16384,tuned,512,7,0,5,9,mixed,results/compaction_16k_2026-10-28/,four details lost by seven cycles
+deepseek-30b-32k-blind,DeepSeek,tuned_blind,qwen3-coder:30b-a3b,32768,tuned,768,5,0,9,9,pass,results/compaction_32k_2026-10-28/,single blind final recall
+deepseek-30b-32k-long,DeepSeek,tuned_repeated,qwen3-coder:30b-a3b,32768,tuned,1024,9,3,9,9,mixed,results/compaction_32k_2026-10-28/,additional success after cap 1536 recorded separately in note
+pi-30b-32k-default,Pi,native_boundary,qwen3-coder:30b-a3b,32768,native,768,1,0,,9,partial,results/pi_candidate_2026-10-29/default/,first checkpoint after overflow
+pi-30b-32k-tuned,Pi,tuned_repeated,qwen3-coder:30b-a3b,32768,tuned,768,8,3,9,9,mixed,results/pi_candidate_2026-10-29/tuned/,seven keyed answers correct despite three failed attempts
+pi-30b-32k-blind,Pi,tuned_blind,qwen3-coder:30b-a3b,32768,tuned,1536,6,0,9,9,pass,results/pi_candidate_2026-10-29/blind_1536/,single blind final recall
+nanobot-30b-32k-blind,Nanobot,native_blind,qwen3-coder:30b-a3b,32768,native,1536,10,0,0,9,fail,results/nanobot_candidate_2026-10-29/,second summary dropped all keyed facts
+opencode-30b-32k-blind,OpenCode,native_blind_extended,qwen3-coder:30b-a3b,32768,native,1536,6,0,9,9,pass,results/opencode_candidate_2026-10-29/,six completed auto compactions persisted with all nine facts
+hermes-27b-65k-short,Hermes Agent,native_blind_short,qwen3.6:27b,65536,native,,1,0,9,9,pass,results/hermes_candidate_2026-10-29/short/,one completed compaction and correct blind final recall
+hermes-27b-65k-long,Hermes Agent,native_blind_long,qwen3.6:27b,65536,native,,2,0,,9,partial,results/hermes_candidate_2026-10-29/default/,client timed out at turn18 during six-minute second summary; no final recall
+short-v1-pi-1,Pi,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools,1536,0,0,9,9,pass,results/comparison_short_control_2026-11-02_v1/pi/,three turns and corrected facts; roster unchanged
+short-v1-opencode-1,OpenCode,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools,1536,0,0,9,9,pass,results/comparison_short_control_2026-11-02_v1/opencode/,three turns; some finish evidence is CLI exit only
+short-v1-deepseek-initial,DeepSeek,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools_initial,1536,0,0,,9,fail,results/comparison_short_control_2026-11-02_v1/deepseek/,exit_plan_mode called twice on turn one; no-tools control failed
+short-v1-deepseek-1,DeepSeek,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools_plan_disabled,1536,0,0,9,9,pass,results/comparison_short_control_2026-11-02_v1_no_plan/deepseek/,three turns; roster unchanged
+short-v1-pi-2,Pi,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools,1536,0,0,9,9,pass,results/comparison_short_control_2026-11-02_v1_repeat_/pi/,repeat two; roster unchanged
+short-v1-opencode-2,OpenCode,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools,1536,0,0,9,9,pass,results/comparison_short_control_2026-11-02_v1_repeat_/opencode/,repeat two; roster unchanged
+short-v1-deepseek-2,DeepSeek,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools_plan_disabled,1536,0,0,9,9,pass,results/comparison_short_control_2026-11-02_v1_repeat_/deepseek/,repeat two; roster unchanged
+short-v1-pi-3,Pi,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools,1536,0,0,9,9,pass,results/comparison_short_control_2026-11-02_v1_repeat_3/pi/,repeat three; roster unchanged
+short-v1-opencode-3,OpenCode,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools,1536,0,0,9,9,pass,results/comparison_short_control_2026-11-02_v1_repeat_3/opencode/,repeat three; roster unchanged
+short-v1-deepseek-3,DeepSeek,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools_plan_disabled,1536,0,0,9,9,pass,results/comparison_short_control_2026-11-02_v1_repeat_3/deepseek/,repeat three; roster unchanged
+short-v1-deepseek-portable,DeepSeek,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools_plan_disabled,1536,0,0,9,9,pass,results/comparison_short_control_2026-11-02_v1_selfcontained/deepseek/,self-contained fixture config validation
+short-v1-pi-final,Pi,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools,1536,0,0,9,9,pass,results/comparison_short_control_2026-11-02_v1_final/pi/,final runner version with zero tool events
+short-v1-opencode-final,OpenCode,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools,1536,0,0,9,9,pass,results/comparison_short_control_2026-11-02_v1_final/opencode/,final runner version with zero tool events
+short-v1-deepseek-final,DeepSeek,short_control_v1,qwen3-coder:30b-a3b,32768,no_tools_plan_disabled,1536,0,0,9,9,pass,results/comparison_short_control_2026-11-02_v1_final/deepseek/,final runner version with zero tool events
