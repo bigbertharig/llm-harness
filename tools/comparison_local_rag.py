@@ -13,6 +13,7 @@ from urllib.request import urlopen
 import comparison_mcp_matrix as matrix
 import comparison_short_control as common
 from comparison_web_search import DRIVERS
+from mcp_call_guard import guarded_mcp
 
 ROOT = common.ROOT
 CORPUS = ROOT / 'results/local_rag_fixture/rag_corpus_v1.json'
@@ -71,6 +72,7 @@ def one(candidate, case_id, run_id):
     fixture_sha = hashlib.sha256(json.dumps(fixture, sort_keys=True).encode()).hexdigest()
     started = time.monotonic()
     baseline, result, before, after, error = None, None, None, None, None
+    budget = None
     baseline_ok = False
     try:
         baseline = matrix.direct_online(baseline_server, 'search_passages', baseline_args)
@@ -85,8 +87,10 @@ def one(candidate, case_id, run_id):
                                                    for x in data.get('results', []))))
         if baseline_ok and candidate != 'baseline':
             before = matrix.candidate_roster(candidate)
-            result = DRIVERS[candidate](out, prompt, server=server,
-                                        target='search_passages', system=system)
+            with guarded_mcp(server['url']) as (guard_url, budget):
+                result = DRIVERS[candidate](out, prompt,
+                                            server={**server, 'url': guard_url},
+                                            target='search_passages', system=system)
             after = matrix.candidate_roster(candidate)
         elif not baseline_ok:
             error = 'direct retrieval baseline failed'
@@ -94,6 +98,9 @@ def one(candidate, case_id, run_id):
         error = f'{type(exc).__name__}: {exc}'
     if baseline is not None:
         (out / 'baseline.json').write_text(json.dumps(baseline, indent=2) + '\n')
+    guard_receipt = budget.receipt() if budget else None
+    if guard_receipt is not None:
+        (out / 'mcp_call_guard.json').write_text(json.dumps(guard_receipt, indent=2) + '\n')
     try:
         calls = service_calls(candidate_key)
     except Exception as exc:
@@ -132,6 +139,7 @@ def one(candidate, case_id, run_id):
                'retrieval_duration_ms': round(sum(call.get('duration_ms', 0) for call in calls), 1),
                'retrieved_ids': retrieved_ids,
                'call_arguments': [call.get('arguments') for call in calls],
+               'mcp_call_guard': guard_receipt,
                'one_line_format': len(answer.splitlines()) == 1 and '|' in answer,
                'error': error, 'duration_seconds': round(time.monotonic()-started, 2)}
     (out / 'summary.json').write_text(json.dumps(receipt, indent=2) + '\n')
