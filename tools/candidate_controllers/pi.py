@@ -1,5 +1,6 @@
 """pi native MCP controller; no upstream checkout edits."""
 import json
+import hashlib
 import os
 import queue
 import shutil
@@ -7,6 +8,7 @@ import subprocess
 import threading
 import time
 import comparison_short_control as common
+from candidate_controllers.text_tool_bridge import parse_request, call_tool
 FIXTURE = common.ROOT / "tools/fixtures/local_mcp_marker.mjs"
 CONFIGS = common.ROOT / "tools/comparison_fixtures"
 SYSTEM = ("Use only the named local fixture MCP tool. Do not use shell, file, web, "
@@ -23,9 +25,22 @@ def write_models(path):
 
 def run_pi(out, prompt, server=None, target=None, system=None):
     target = target or ('read_structured_marker' if 'read_structured_marker' in prompt else 'read_marker')
+    targets = list(target) if isinstance(target, (list, tuple)) else [target]
     server = server or {'name': 'fixture', 'command': [str(common.NODE), str(FIXTURE), str(out / 'calls.jsonl')],
                         'tools': ['read_marker', 'read_structured_marker']}
     system = system or SYSTEM
+    help_spec = server.get('help')
+    if help_spec:
+        if not isinstance(help_spec, dict) or not isinstance(help_spec.get('name'), str) \
+                or not isinstance(help_spec.get('arguments'), dict):
+            raise ValueError('server help must specify a tool name and explicit arguments')
+        help_server = {**server, 'tools': list(set(server['tools']) | {help_spec['name']})}
+        guidance = call_tool(help_server, help_spec['name'], help_spec['arguments'], timeout=20)
+        if guidance.get('isError'):
+            raise RuntimeError('configured MCP help tool returned an error')
+        (out / 'tool_guidance.json').write_text(json.dumps(guidance, indent=2) + '\n')
+        system += ('\nMCP server usage guidance obtained before this turn:\n'
+                   + json.dumps(guidance, ensure_ascii=False)[:6000])
     agent = out / 'agent'
     agent.mkdir()
     write_models(agent / 'models.json')
@@ -42,7 +57,7 @@ def run_pi(out, prompt, server=None, target=None, system=None):
     env = os.environ.copy()
     env['PI_CODING_AGENT_DIR'] = str(agent)
     cmd = [str(common.NODE), str(common.PI_CLI), '--mode', 'rpc',
-           '--tools', 'mcp__' + server['name'] + '__' + target,
+           '--tools', ','.join('mcp__' + server['name'] + '__' + name for name in targets),
            '--no-skills', '--no-prompt-templates', '--no-context-files',
            '--system-prompt', system, '--session-dir', str(out / 'sessions'),
            '--provider', 'rig', '--model', common.ROUTE]
@@ -61,11 +76,14 @@ def run_pi(out, prompt, server=None, target=None, system=None):
             received.put({'type': '_eof'})
         threading.Thread(target=reader, daemon=True).start()
         answer, finish, tool_events, errors = '', None, [], []
+        bridge_calls = []
+        attempted = set()
+        repair_attempted = False
         started = time.monotonic()
         try:
             proc.stdin.write(json.dumps({'id': 'tool-turn', 'type': 'prompt', 'message': prompt}) + '\n')
             proc.stdin.flush()
-            deadline = time.monotonic() + 120
+            deadline = time.monotonic() + 360
             while time.monotonic() < deadline:
                 try:
                     item = received.get(timeout=deadline-time.monotonic())
@@ -84,7 +102,46 @@ def run_pi(out, prompt, server=None, target=None, system=None):
                                      if block.get('type') == 'text')
                     finish = message.get('stopReason')
                 if kind == 'agent_settled':
-                    break
+                    request = parse_request(answer, server, targets) if not tool_events else None
+                    if not request:
+                        if not tool_events and not bridge_calls and not repair_attempted:
+                            repair_attempted = True
+                            allowed = ['mcp__' + server['name'] + '__' + name for name in targets]
+                            correction = ('No MCP tool call was executed. The user requested a tool result. '
+                                          'Do not assume or invent a result. If a tool is needed, reply with '
+                                          'exactly one JSON object with keys "name" and "arguments". '
+                                          'Use an advertised tool name and its input schema. Allowed names: '
+                                          + json.dumps(allowed) + '. No prose or example result.')
+                            proc.stdin.write(json.dumps({'id': 'tool-format-repair', 'type': 'prompt',
+                                                         'message': correction}) + '\n')
+                            proc.stdin.flush()
+                            continue
+                        break
+                    tool, arguments = request
+                    fingerprint = json.dumps(request, sort_keys=True)
+                    if fingerprint in attempted or len(bridge_calls) >= 2:
+                        errors.append('text tool fallback repeated a request or exceeded its call limit')
+                        break
+                    attempted.add(fingerprint)
+                    try:
+                        result = call_tool(server, tool, arguments,
+                                            timeout=min(180, max(1, deadline-time.monotonic()-10)))
+                    except Exception as exc:
+                        errors.append(f'text tool fallback: {type(exc).__name__}: {exc}')
+                        break
+                    bridge_calls.append({'tool': tool,
+                                         'argument_keys': sorted(arguments),
+                                         'arguments_sha256': hashlib.sha256(json.dumps(
+                                             arguments, sort_keys=True).encode()).hexdigest(),
+                                         'is_error': bool(result.get('isError'))})
+                    feedback = ('MCP tool result for ' + 'mcp__' + server['name'] + '__' + tool + ':\n'
+                                + json.dumps(result, ensure_ascii=False) + '\n'
+                                + 'Continue the original task using this result. Follow the '
+                                  'original user request for the final answer format exactly; '
+                                  'do not add explanation unless requested.')
+                    proc.stdin.write(json.dumps({'id': f'tool-feedback-{len(bridge_calls)}',
+                                                 'type': 'prompt', 'message': feedback}) + '\n')
+                    proc.stdin.flush()
             else:
                 errors.append('timeout')
         finally:
@@ -95,7 +152,11 @@ def run_pi(out, prompt, server=None, target=None, system=None):
                 except subprocess.TimeoutExpired:
                     proc.terminate()
                     proc.wait(timeout=5)
+    (out / 'text_tool_bridge.json').write_text(json.dumps(bridge_calls, indent=2) + '\n')
     return {'answer': answer, 'finish_reason': finish, 'tool_events': tool_events,
+            'tool_mode': 'text_bridge' if bridge_calls else ('native' if tool_events else 'none'),
+            'bridge_calls': bridge_calls,
+            'format_repair_attempted': repair_attempted,
             'errors': errors, 'exit_code': proc.returncode,
             'duration_seconds': round(time.monotonic()-started, 2)}
 

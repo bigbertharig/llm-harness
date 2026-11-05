@@ -140,6 +140,8 @@ def one(candidate, run_id, baseline_only=False):
                'parent_answer': answer, 'parent_finish': result.get('finish_reason'),
                'parent_format_exact': canonical_integer_answer(answer) == '42',
                'parent_exit_code': result.get('exit_code'), 'parent_errors': result.get('errors'),
+               'tool_mode': result.get('tool_mode', 'native' if calls else 'none'),
+               'bridge_calls': result.get('bridge_calls', []),
                'child_receipts': [str(path) for path in children],
                'duration_seconds': round(time.monotonic() - started, 2)}
     (out / 'summary.json').write_text(json.dumps(receipt, indent=2) + '\n')
