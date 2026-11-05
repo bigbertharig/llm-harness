@@ -57,3 +57,23 @@ OpenCode's MCP server connected with one tool, but the model ignored the explici
 ## Next comparison design
 
 Run repeated trials per harness and report call rate, correct child result rate, final-answer rate, exact-format rate, latency distribution, and failure type. Pin the same parent model, model settings, child model, task, fixture hash, and ready-route state across harnesses where feasible. Then hold one harness fixed and vary parent size: a small model, approximately 30B, and a larger model. Keep hardware placement, quantization, context, and time limits in the receipt so a model-size effect is not confused with a harness difference. Use several tasks, including `research` and failure/timeout paths, before drawing a general ranking. Keep the deterministic direct MCP baseline before every native trial; a failed baseline invalidates that trial as a harness comparison.
+
+## Parent model size sweep, 2026-11-05
+
+The first size sweep held the Pi harness, `coding` child route (`coder-7b` on GPU 1), hidden arithmetic task, and fixture hash `00a5eda3be222f4cf6bc6096dad52ba18d592ad55c90c54c47ac3d76b53e7a2c` fixed. Each parent had three native trials, each preceded by a passing direct MCP baseline. The durable summary is `results/model_size_sweep_20261105/matrix.json`; individual raw receipts are linked in that file. Parent models, placements, context lengths, and backend are recorded there.
+
+| Parent size | Model | Parent placement | Native pass | Delegation call | Median trial time |
+|---|---|---|---:|---:|---:|
+| 7B | Qwen2.5 Coder 7B | GPU 0, 16K | 0/3 | 0/3 | 3.42 s |
+| 14B | Qwen2.5 Coder 14B | GPU 0, 16K | 0/3 | 0/3 | 3.76 s |
+| 30B | Qwen3 Coder 30B A3B | GPU 0, 32K | 3/3 | 3/3 | 5.30 s |
+| 74B | Nemotron 3.5 Bolt 74B A9B | GPUs 0,2,3,4,5, 16K | 3/3 | 3/3 | 11.99 s |
+| 125B main + 51B lookup | Qwen3.8 Flash-Next Q2_0 | Strata, GPU 0, 8K | 3/3 | 3/3 | 8.06 s |
+
+The 7B and 14B parents each emitted a correctly shaped `mcp__subagent__delegate_task` JSON object as *text*. The native Pi harness treated it as a final answer, so no tool execution or child receipt occurred. This is a model-to-tool translation gap in this model/route/controller combination; it is not evidence that the models chose the wrong agent type or task. Keep these failed native results and test a separately labeled harness adapter that recognizes a validated textual tool request. Do not retroactively score text as a native tool call. The 30B, 74B, and Strata 125B parents used the MCP tool successfully in all three trials. These are one harness and one task; size alone cannot be credited for the difference because model families, quantization, context, backend, and GPU placement also changed.
+
+The 125B case came from the benchmarking library's Strata pack under `/data/model-hotset/qwen3.8-flash-next-q2_0`. It has 125B main parameters, a 51B lookup table, and 6B active parameters per token; it is the locally available large-model case, not an exact 120B model. Its dynamic gateway route was ready-listed, and all three direct baselines and native trials passed. All test routes were unloaded; the manager reported six free GPUs.
+
+## Next local retrieval test
+
+Disaster Clippy's configured local backup directory is `D:\disaster-backups-local`. It contains populated 768- and 1536-dimension Chroma stores, source packs with accepted passages and vector JSON, and the local `all-mpnet-base-v2` embedding model. For the first harness comparison, derive a small immutable corpus and query set from selected source packs **read-only**; do not point test writers at the production Chroma directories. Record source/document/section IDs, text, metadata, vector dimension, embedding model/version, corpus hash, and expected relevant passage IDs. Import the same corpus into an isolated Chroma collection on the Pi. Direct queries must pass recall, metadata/source filtering, and exact-ID checks before any LLM trial. Expose one simple local MCP search tool with query, optional source filter, and result limit; return ranked passages with IDs, titles, snippets, scores, and citations. Then compare harnesses on tool choice, query reformulation, use of filters, grounded answer/citation quality, latency, and tool errors. Add exact-term and hybrid-search cases separately so embedding quality and agent behavior are not conflated. Pinecone is outside this local-only round.
