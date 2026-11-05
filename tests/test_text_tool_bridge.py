@@ -8,12 +8,20 @@ import threading
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from candidate_controllers.text_tool_bridge import call_http, call_stdio, parse_request
+from candidate_controllers.pi import help_spec_for
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class TextToolBridgeTest(unittest.TestCase):
+    def test_known_local_servers_request_exact_tool_help(self):
+        for name in ('research_local', 'geometry_local'):
+            self.assertEqual(help_spec_for({'name': name}, ['get_catalog']),
+                             {'name': 'get_tool_help', 'arguments': {'tool_name': 'get_catalog'}})
+        self.assertIsNone(help_spec_for({'name': 'other'}, ['get_catalog']))
+        self.assertIsNone(help_spec_for({'name': 'geometry_local'}, ['get_tool_help']))
+
     def test_only_whole_configured_json_request_is_accepted(self):
         server = {'name': 'subagent', 'tools': ['delegate_task']}
         good = json.dumps({'name': 'mcp__subagent__delegate_task',

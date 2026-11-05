@@ -13,6 +13,15 @@ FIXTURE = common.ROOT / "tools/fixtures/local_mcp_marker.mjs"
 CONFIGS = common.ROOT / "tools/comparison_fixtures"
 SYSTEM = ("Use only the named local fixture MCP tool. Do not use shell, file, web, "
           "or editing tools. Return only the exact marker from the tool result.")
+LOCAL_HELP_SERVERS = {'research_local', 'geometry_local'}
+
+
+def help_spec_for(server, targets):
+    if 'help' in server:
+        return server['help']
+    if server['name'] in LOCAL_HELP_SERVERS and len(targets) == 1 and targets[0] != 'get_tool_help':
+        return {'name': 'get_tool_help', 'arguments': {'tool_name': targets[0]}}
+    return None
 
 
 def write_models(path):
@@ -29,7 +38,7 @@ def run_pi(out, prompt, server=None, target=None, system=None):
     server = server or {'name': 'fixture', 'command': [str(common.NODE), str(FIXTURE), str(out / 'calls.jsonl')],
                         'tools': ['read_marker', 'read_structured_marker']}
     system = system or SYSTEM
-    help_spec = server.get('help')
+    help_spec = help_spec_for(server, targets)
     if help_spec:
         if not isinstance(help_spec, dict) or not isinstance(help_spec.get('name'), str) \
                 or not isinstance(help_spec.get('arguments'), dict):
