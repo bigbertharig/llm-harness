@@ -4,29 +4,32 @@ import json
 import os
 import subprocess
 import time
+import comparison_short_control as common
 
 
 HERMES = '/home/bryan/harness-runtimes/hermes/venv314/bin/hermes'
 
 
 def run_hermes(out, prompt, server, target, system):
+    targets = list(target) if isinstance(target, (list, tuple)) else [target]
+    route, _, context = common.route_spec('hermes')
     home = out / 'hermes_home'
     home.mkdir()
     connection = (f'    url: {json.dumps(server["url"])}\n' if 'url' in server else
                   f'    command: {json.dumps(server["command"][0])}\n' +
                   '    args:\n' + ''.join(f'      - {json.dumps(x)}\n' for x in server['command'][1:]))
-    config = ('model: gpu-rig/chat-27b\nproviders:\n  rig:\n'
+    config = (f'model: {route}\nproviders:\n  rig:\n'
               '    api: http://127.0.0.1:8080/v1\n    transport: chat_completions\n'
-              '    api_key: no-key-required\n    default_model: gpu-rig/chat-27b\n'
-              '    discover_models: false\n    models:\n      gpu-rig/chat-27b:\n'
-              '        context_length: 65536\n    extra_headers:\n      X-Require-Ready: "true"\n'
+              f'    api_key: no-key-required\n    default_model: {route}\n'
+              f'    discover_models: false\n    models:\n      {route}:\n'
+              f'        context_length: {context}\n    extra_headers:\n      X-Require-Ready: "true"\n'
               'toolsets: []\nskills:\n  enabled: false\nmcp_servers:\n'
               f'  {server["name"]}:\n' + connection +
-              f'    enabled: true\n    tools:\n      include: [{json.dumps(target)}]\n')
+              f'    enabled: true\n    tools:\n      include: {json.dumps(targets)}\n')
     (home / 'config.yaml').write_text(config)
     env = os.environ.copy()
     env['HERMES_HOME'] = str(home)
-    cmd = [HERMES, 'chat', '--provider', 'rig', '--model', 'gpu-rig/chat-27b',
+    cmd = [HERMES, 'chat', '--provider', 'rig', '--model', route,
            '--format', 'stream-json', '--oneshot', '--query', system + '\n\n' + prompt,
            '--in', str(out / 'workspace'), '--ignore-rules']
     started = time.monotonic()
@@ -69,23 +72,24 @@ def run_hermes(out, prompt, server, target, system):
 
 def run_short_control(out):
     import comparison_short_control as short
+    route, _, context = short.route_spec('hermes')
     home = out / 'hermes_home'
     home.mkdir()
     (out / 'workspace').mkdir()
     (home / 'config.yaml').write_text(
-        'model: gpu-rig/chat-27b\nproviders:\n  rig:\n'
+        f'model: {route}\nproviders:\n  rig:\n'
         '    api: http://127.0.0.1:8080/v1\n    transport: chat_completions\n'
-        '    api_key: no-key-required\n    default_model: gpu-rig/chat-27b\n'
-        '    discover_models: false\n    models:\n      gpu-rig/chat-27b:\n'
-        '        context_length: 65536\n    extra_headers:\n      X-Require-Ready: "true"\n'
-        'toolsets: []\nskills:\n  enabled: false\n')
+        f'    api_key: no-key-required\n    default_model: {route}\n'
+        f'    discover_models: false\n    models:\n      {route}:\n'
+        f'        context_length: {context}\n    extra_headers:\n      X-Require-Ready: "true"\n'
+        'platform_toolsets:\n  cli: []\nskills:\n  enabled: false\n')
     env = os.environ.copy()
     env['HERMES_HOME'] = str(home)
     session = None
     rows = []
     for index, prompt in enumerate(short.PROMPTS, 1):
         short.roster_for('hermes')
-        command = [HERMES, 'chat', '--provider', 'rig', '--model', 'gpu-rig/chat-27b',
+        command = [HERMES, 'chat', '--provider', 'rig', '--model', route,
                    '--format', 'stream-json', '--oneshot', '--query', prompt,
                    '--in', str(out / 'workspace'), '--ignore-rules']
         if session:

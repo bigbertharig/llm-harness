@@ -209,6 +209,10 @@ def handle(message, endpoint):
 def main():
     endpoint = os.environ.get("SEARXNG_URL", "")
     receipt = Path(sys.argv[1]) if len(sys.argv) > 1 else None
+    if len(sys.argv) > 2:
+        if len(sys.argv) != 4 or sys.argv[2] != "--endpoint":
+            raise SystemExit("usage: server.py [receipt.jsonl] [--endpoint URL]")
+        endpoint = sys.argv[3]
 
     def write(entry):
         if receipt is not None:

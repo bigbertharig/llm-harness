@@ -12,15 +12,28 @@ CONFIGS = common.ROOT / "tools/comparison_fixtures"
 SYSTEM = ("Use only the named local fixture MCP tool. Do not use shell, file, web, "
           "or editing tools. Return only the exact marker from the tool result.")
 
+def configure_route(config):
+    model = config['providers']['rig']['models']['coder30b']
+    model['modelID'] = common.ROUTE
+    model['name'] = 'Ready ' + common.MODEL
+    model['limit']['context'] = common.CONTEXT
+    return config
+
 def run_opencode(out, prompt, server=None, target=None, system=None):
     server = server or {'name': 'fixture', 'command': [str(common.NODE), str(FIXTURE), str(out / 'calls.jsonl')],
                         'tools': ['read_marker', 'read_structured_marker']}
     system = system or SYSTEM
-    config = json.loads((CONFIGS / 'opencode_config.json').read_text())
+    config = configure_route(json.loads((CONFIGS / 'opencode_config.json').read_text()))
+    config['providers']['rig']['settings']['baseURL'] = os.environ.get(
+        'OPENCODE_GATEWAY_BASE_URL', config['providers']['rig']['settings']['baseURL'])
     config['providers']['rig']['models']['coder30b']['capabilities']['tools'] = True
     config['agents'] = {'mcpprobe': {
         'description': 'Only the selected MCP tool', 'mode': 'primary', 'system': system,
-        'permissions': [{'action': '*', 'resource': '*', 'effect': 'deny'}] + [
+        'permissions': [
+            {'action': action, 'resource': '*', 'effect': 'deny'}
+            for action in ('read', 'edit', 'write', 'glob', 'grep', 'shell', 'subagent',
+                           'skill', 'question', 'webfetch', 'websearch')
+        ] + [
             {'action': server['name'] + '_' + name, 'resource': '*', 'effect': 'allow'}
             for name in server['tools']],
     }}
@@ -45,6 +58,7 @@ def run_opencode(out, prompt, server=None, target=None, system=None):
                 'errors': ['timeout'], 'exit_code': None, 'duration_seconds': round(time.monotonic()-started, 2)}
     (out / 'events.jsonl').write_text(result.stdout)
     (out / 'stderr.log').write_text(result.stderr)
+    (out / 'controller_exit.json').write_text(json.dumps({'exit_code': result.returncode}))
     records = []
     for line in result.stdout.splitlines():
         try:
@@ -67,7 +81,7 @@ def run_opencode(out, prompt, server=None, target=None, system=None):
 
 def run_short_control(out):
     from comparison_short_control import HOME, ROOT, GATEWAY, ROUTE, MODEL, CONTEXT, OUTPUT_CAP, NODE, PI_CLI, OPENCODE, DEEPSEEK_CLI, FIXTURES, SYSTEM, PROMPTS, CURRENT, OLD, roster
-    config = json.loads((FIXTURES / 'opencode_config.json').read_text())
+    config = configure_route(json.loads((FIXTURES / 'opencode_config.json').read_text()))
     config['agents']['chatprobe']['system'] = SYSTEM
     (out / 'config.json').write_text(json.dumps(config, indent=2))
     (out / 'workspace').mkdir()

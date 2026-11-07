@@ -22,6 +22,10 @@ GATEWAY = 'http://127.0.0.1:8080'
 ROUTE = os.environ.get('HARNESS_TEST_ROUTE', 'gpu-rig/coder-30b')
 MODEL = os.environ.get('HARNESS_TEST_MODEL', 'qwen3-coder:30b-a3b')
 CONTEXT = int(os.environ.get('HARNESS_TEST_CONTEXT', '32768'))
+def route_spec(candidate):
+    if candidate == 'hermes' and 'HARNESS_TEST_ROUTE' not in os.environ:
+        return 'gpu-rig/chat-27b', 'qwen3.6:27b', 65536
+    return ROUTE, MODEL, CONTEXT
 OUTPUT_CAP = 1536
 NODE = HOME / '.local/opt/node-v24.14.0-linux-arm64/bin/node'
 PI_CLI = HOME / 'harness-runtimes/pi-1.4.0/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js'
@@ -49,14 +53,13 @@ def roster():
 
 
 def roster_for(candidate):
-    if candidate != 'hermes':
-        return roster()
+    route, model, context = route_spec(candidate)
     with urllib.request.urlopen(GATEWAY + '/v1/rig/ready-roster', timeout=10) as response:
         data = json.load(response)
-    if not any(row.get('id') == 'gpu-rig/chat-27b' and row.get('model') == 'qwen3.6:27b' and
-               row.get('state') == 'ready' and row.get('context_length') == 65536
+    if not any(row.get('id') == route and row.get('model') == model and
+               row.get('state') == 'ready' and row.get('context_length') == context
                for row in data.get('data', [])):
-        raise RuntimeError('Hermes 65K route unavailable or changed')
+        raise RuntimeError(f'{candidate} pinned route unavailable or changed')
     return data
 
 
@@ -95,9 +98,9 @@ def main():
     out.mkdir(parents=True, exist_ok=False)
     fixture = {'version': 'short-control-v1', 'system': SYSTEM, 'prompts': PROMPTS,
                'current': CURRENT, 'old': OLD,
-               'route': 'gpu-rig/chat-27b' if args.candidate == 'hermes' else ROUTE,
-               'model': 'qwen3.6:27b' if args.candidate == 'hermes' else MODEL,
-               'context': 65536 if args.candidate == 'hermes' else CONTEXT,
+               'route': route_spec(args.candidate)[0],
+               'model': route_spec(args.candidate)[1],
+               'context': route_spec(args.candidate)[2],
                'output_cap': None if args.candidate == 'hermes' else OUTPUT_CAP}
     fixture_bytes = json.dumps(fixture, sort_keys=True).encode()
     (out / 'fixture.json').write_text(json.dumps(fixture, indent=2))

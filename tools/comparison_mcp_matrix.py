@@ -30,15 +30,7 @@ URLS = {
 
 
 def candidate_roster(candidate):
-    if candidate != 'hermes':
-        return common.roster()
-    with urllib.request.urlopen(common.GATEWAY + '/v1/rig/ready-roster', timeout=10) as response:
-        roster = json.load(response)
-    if not any(x.get('id') == 'gpu-rig/chat-27b' and x.get('model') == 'qwen3.6:27b' and
-               x.get('context_length') == 65536 and x.get('state') == 'ready'
-               for x in roster.get('data', [])):
-        raise RuntimeError('Hermes 65K ready route unavailable or changed')
-    return roster
+    return common.roster_for(candidate)
 # Difficulty tags describe the server interface, not candidate quality.
 CASES = {
     'marker_text': ('marker', 'read_marker', {}, 'easy', 'text'),
@@ -277,9 +269,9 @@ def main():
     server = server_for(case, out)
     fixture = {'version': 'mcp-matrix-v1', 'case': case, 'server': name, 'tool': tool,
                'arguments': arguments, 'difficulty': difficulty, 'result_shape': shape,
-               'prompt': question(case), 'route': 'gpu-rig/chat-27b' if args.candidate == 'hermes' else common.ROUTE,
-               'model': 'qwen3.6:27b' if args.candidate == 'hermes' else common.MODEL,
-               'context': 65536 if args.candidate == 'hermes' else common.CONTEXT,
+               'prompt': question(case), 'route': common.route_spec(args.candidate)[0],
+               'model': common.route_spec(args.candidate)[1],
+               'context': common.route_spec(args.candidate)[2],
                'declared_output_cap': None if args.candidate == 'hermes' else common.OUTPUT_CAP,
                'server_url': server.get('url')}
     (out / 'fixture.json').write_text(json.dumps(fixture, indent=2))

@@ -2,44 +2,51 @@
 import json
 import os
 import subprocess
+import sys
 import time
+import comparison_short_control as common
 
 def run_nanobot(out, prompt, server, target, system):
+    targets = list(target) if isinstance(target, (list, tuple)) else [target]
+    if 'command' in server:
+        server = {**server, 'command': [sys.executable, str(common.ROOT / 'tools/candidate_controllers/mcp_content_proxy.py'),
+                                       '--', *server['command']]}
     config = {
         'providers': {'rig': {'apiKey': 'ready-only-local', 'apiBase': 'http://127.0.0.1:8080/v1',
                               'extraHeaders': {'X-Require-Ready': 'true'}}},
-        'modelPresets': {'ready30b': {'provider': 'rig', 'model': 'gpu-rig/coder-30b',
-                                     'maxTokens': 1536, 'contextWindowTokens': 32768, 'temperature': 0.1}},
+        'modelPresets': {'ready30b': {'provider': 'rig', 'model': common.ROUTE,
+                                     'maxTokens': 1536, 'contextWindowTokens': common.CONTEXT, 'temperature': 0.1}},
         'agents': {'defaults': {'modelPreset': 'ready30b', 'idleCompactAfterMinutes': 0,
                                 'maxToolIterations': 3}},
         'tools': {'maxSessionMessagesPerMinute': 1000, 'restrictToWorkspace': True,
                   'ssrfWhitelist': ['127.0.0.1/32'],
                   'mcpServers': {server['name']: ({'url': server['url']} if 'url' in server else
                                                    {'command': server['command'][0],
-                                                    'args': server['command'][1:]}) | {'enabledTools': [target]}}},
+                                                    'args': server['command'][1:]}) | {'enabledTools': targets}}},
     }
     (out / 'config.json').write_text(json.dumps(config, indent=2))
     code = '''import asyncio,json,sys
 from pathlib import Path
 from nanobot import Nanobot
-out=Path(sys.argv[1]); prompt=sys.argv[2]; target=sys.argv[3]
+out=Path(sys.argv[1]); prompt=sys.argv[2]; targets=json.loads(sys.argv[3])
 async def main():
  async with Nanobot.from_config(out/'config.json',workspace=out/'workspace') as bot:
   await bot._mcp_provider.connect()
   registry=bot._loop.tools
   names=[d.get('function',{}).get('name') or d.get('name') for d in registry.get_definitions()]
-  keep=[n for n in names if n and n.endswith('_'+target) and n.startswith('mcp_')]
+  keep=[n for n in names if n and any(n.endswith('_'+target) for target in targets) and n.startswith('mcp_')]
   for n in names:
    if n and n not in keep: registry.unregister(n)
   (out/'registered_tools.json').write_text(json.dumps({'all':names,'model_facing':keep},indent=2))
-  if len(keep)!=1: raise RuntimeError('target tool not uniquely registered: '+str(keep))
-  tool=registry.get(keep[0]); original=tool.execute
-  async def logged(**params):
-   with (out/'native_tool_calls.jsonl').open('a') as f: f.write(json.dumps({'type':'call','name':keep[0],'args':params},default=str)+'\\n')
-   value=await original(**params)
-   with (out/'native_tool_calls.jsonl').open('a') as f: f.write(json.dumps({'type':'result','name':keep[0],'result':str(value)[:100000]},default=str)+'\\n')
-   return value
-  tool.execute=logged
+  if len(keep)!=len(targets): raise RuntimeError('target tools not uniquely registered: '+str(keep))
+  for name in keep:
+   tool=registry.get(name); original=tool.execute
+   async def logged(_original=original,_name=name,**params):
+    with (out/'native_tool_calls.jsonl').open('a') as f: f.write(json.dumps({'type':'call','name':_name,'args':params},default=str)+'\\n')
+    value=await _original(**params)
+    with (out/'native_tool_calls.jsonl').open('a') as f: f.write(json.dumps({'type':'result','name':_name,'result':str(value)[:100000]},default=str)+'\\n')
+    return value
+   tool.execute=logged
   result=await asyncio.wait_for(bot.run(prompt,session_key='sdk:matrix'),timeout=115)
   print('RESULT '+json.dumps({'answer':result.content,'stop_reason':result.stop_reason,
    'error':result.error,'tools_used':result.tools_used,'metadata':result.metadata},default=str))
@@ -47,7 +54,7 @@ asyncio.run(main())
 '''
     (out / 'nanobot_trial.py').write_text(code)
     cmd = ['/home/bryan/harness-runtimes/nanobot-0.3.5/venv/bin/python',
-           str(out / 'nanobot_trial.py'), str(out), system + '\n\n' + prompt, target]
+           str(out / 'nanobot_trial.py'), str(out), system + '\n\n' + prompt, json.dumps(targets)]
     started = time.monotonic()
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, cwd=out / 'workspace', timeout=120)
@@ -80,7 +87,7 @@ def run_short_control(out):
                                    'apiBase': 'http://127.0.0.1:8080/v1',
                                    'extraHeaders': {'X-Require-Ready': 'true'}}},
               'modelPresets': {'ready30b': {'provider': 'rig', 'model': short.ROUTE,
-                                           'maxTokens': 1536, 'contextWindowTokens': 32768,
+                                           'maxTokens': 1536, 'contextWindowTokens': short.CONTEXT,
                                            'temperature': 0.1}},
               'agents': {'defaults': {'modelPreset': 'ready30b', 'idleCompactAfterMinutes': 0,
                                       'maxToolIterations': 1}},

@@ -43,7 +43,10 @@ def result_root(run_id, backend):
 
 def search_server(backend, receipt):
     python = sys.executable if backend == 'searxng' else PYTHON
-    return {'name': 'web_search', 'command': [python, str(SERVERS[backend]), str(receipt)],
+    command = [python, str(SERVERS[backend]), str(receipt)]
+    if backend == 'searxng':
+        command += ['--endpoint', os.environ['SEARXNG_URL']]
+    return {'name': 'web_search', 'command': command,
             'tools': ['search_web']}
 
 
@@ -56,7 +59,8 @@ def baseline_passes(direct, case):
 
 
 def direct_baseline(server, args, out):
-    command = server['command'][:-1] + [str(out / 'baseline_calls.jsonl')]
+    command = list(server['command'])
+    command[2] = str(out / 'baseline_calls.jsonl')
     proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, bufsize=1)
     def request(index, method, params=None):
@@ -98,8 +102,9 @@ def run_case(candidate, case, run_id, backend='ddg'):
               'Return JSON only: {"url":"...","unique_url_count":N}, where N is the count of distinct returned URLs. '
               'Do not use outside search or files.')
     (out / 'fixture.json').write_text(json.dumps({'candidate': candidate, 'backend': backend, 'case': case,
-        'arguments': args, 'prompt': prompt, 'route': 'gpu-rig/chat-27b' if candidate == 'hermes' else common.ROUTE,
-        'context': 65536 if candidate == 'hermes' else common.CONTEXT}, indent=2))
+        'arguments': args, 'prompt': prompt, 'route': common.route_spec(candidate)[0],
+        'model': common.route_spec(candidate)[1],
+        'context': common.route_spec(candidate)[2]}, indent=2))
     before = matrix.candidate_roster(candidate)
     (out / 'ready_before.json').write_text(json.dumps(before, indent=2))
     started = time.monotonic()

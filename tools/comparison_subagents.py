@@ -79,7 +79,7 @@ def one(candidate, run_id, baseline_only=False):
     out = ROOT / 'results' / run_id / 'subagents' / candidate
     out.mkdir(parents=True, exist_ok=False)
     (out / 'workspace').mkdir()
-    parent_route = 'gpu-rig/chat-27b' if candidate == 'hermes' else common.ROUTE
+    parent_route = common.route_spec(candidate)[0]
     server = {'name': 'subagent', 'command': [sys.executable, str(FIXTURE), parent_route,
               str(out / 'children'), str(out / 'calls.jsonl')],
               'tools': ['delegate_task']}

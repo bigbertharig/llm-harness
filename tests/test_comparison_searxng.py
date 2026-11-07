@@ -63,8 +63,10 @@ class ComparisonSearxngContract(unittest.TestCase):
             def candidate_driver(out, prompt, server, target, system):
                 invoked.append(server)
                 self.assertEqual(server["command"][1], str(comparison.SERVERS["searxng"]))
+                self.assertEqual(server["command"][-2:], ["--endpoint", self.endpoint])
                 self.assertEqual(target, "search_web")
-                call = comparison.direct_baseline(server, {"query": case["query"], "max_results": 10}, out)
+                with patch.dict(os.environ, {"SEARXNG_URL": ""}):
+                    call = comparison.direct_baseline(server, {"query": case["query"], "max_results": 10}, out)
                 (out / "baseline_calls.jsonl").replace(out / "calls.jsonl")
                 url = call["structuredContent"]["unique_urls"][1]
                 return {"answer": json.dumps({"url": url, "unique_url_count": 6}),

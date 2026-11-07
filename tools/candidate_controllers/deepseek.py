@@ -4,6 +4,7 @@ import os
 import queue
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import comparison_short_control as common
@@ -12,10 +13,18 @@ CONFIGS = common.ROOT / "tools/comparison_fixtures"
 SYSTEM = ("Use only the named local fixture MCP tool. Do not use shell, file, web, "
           "or editing tools. Return only the exact marker from the tool result.")
 
+def write_route_patch(path):
+    template = (CONFIGS / 'deepseek_route.patch.yml').read_text()
+    path.write_text(template.replace('gpu-rig/coder-30b', common.ROUTE)
+                    .replace('contextWindow: 32768', f'contextWindow: {common.CONTEXT}'))
+
 def run_deepseek(out, prompt, server=None, target=None, system=None):
     server = server or {'name': 'fixture', 'command': [str(common.NODE), str(FIXTURE), str(out / 'calls.jsonl')],
                         'tools': ['read_marker', 'read_structured_marker']}
-    shutil.copy2(CONFIGS / 'deepseek_route.patch.yml', out / 'route.patch.yml')
+    if 'command' in server:
+        server = {**server, 'command': [sys.executable, str(common.ROOT / 'tools/candidate_controllers/mcp_content_proxy.py'),
+                                       '--', *server['command']]}
+    write_route_patch(out / 'route.patch.yml')
     shutil.copy2(CONFIGS / 'deepseek_no_tools.patch.yml', out / 'no-tools.patch.yml')
     (out / 'home').mkdir()
     transport = (f"        transport: streamable-http\n        url: {server['url']}\n" if 'url' in server else
@@ -62,7 +71,7 @@ def run_deepseek(out, prompt, server=None, target=None, system=None):
 
 def run_short_control(out):
     from comparison_short_control import HOME, ROOT, GATEWAY, ROUTE, MODEL, CONTEXT, OUTPUT_CAP, NODE, PI_CLI, OPENCODE, DEEPSEEK_CLI, FIXTURES, SYSTEM, PROMPTS, CURRENT, OLD, roster
-    shutil.copy2(FIXTURES / 'deepseek_route.patch.yml', out / 'route.patch.yml')
+    write_route_patch(out / 'route.patch.yml')
     shutil.copy2(FIXTURES / 'deepseek_no_tools.patch.yml', out / 'no-tools.patch.yml')
     (out / 'home').mkdir()
     (out / 'workspace').mkdir()
