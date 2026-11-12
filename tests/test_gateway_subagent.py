@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from gateway_subagent import resolve_child
+from gateway_subagent import resolve_child, run_child
 from subagent_contract import canonical_integer_answer, canonical_final_line, child_system_prompt
 
 
@@ -37,6 +37,22 @@ class GatewaySubagentRequest(unittest.TestCase):
             'parent_route': 'gpu-rig/chat-27b', 'agent_type': 'coding'})
         self.assertEqual(result['route'], 'gpu-rig/coder-7b')
 
+    def test_ephemeral_child_is_released_when_post_attach_roster_fails(self):
+        parent = {'id': 'gpu-rig/shared-35b-main', 'model': 'qwen3.6:35b-a3b-xl',
+                  'state': 'ready', 'context_length': 262144, 'gpu_ids': [0]}
+        child = {'route': 'gpu-rig/shared-35b-child-test', 'gpu_ids': [2],
+                 'model': parent['model'], 'context_length': 262144, 'ephemeral': True}
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('gateway_subagent.fetch_ready_roster', side_effect=[
+                 {'object': 'ready_roster', 'version': 1, 'data': [parent]},
+                 {'object': 'ready_roster', 'version': 1, 'data': [parent]}]), \
+             patch('gateway_subagent.resolve_child', return_value=child), \
+             patch('gateway_subagent.release_child') as release:
+            with self.assertRaisesRegex(ValueError, 'ready roster'):
+                run_child(parent_id=parent['id'], agent_type='coding', prompt='check',
+                          out=Path(temp) / 'child', gateway='http://127.0.0.1:8080')
+        release.assert_called_once_with('http://127.0.0.1:8080', parent['id'], child['route'])
+
     def test_mcp_launch_arguments_expose_simple_tool(self):
         server = Path(__file__).resolve().parents[1] / 'tools/gateway_subagent_mcp.py'
         with tempfile.TemporaryDirectory() as temp:
@@ -47,7 +63,7 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         tools = json.loads(proc.stdout)['result']['tools']
         self.assertEqual([tool['name'] for tool in tools], ['delegate_task'])
-        self.assertEqual(set(tools[0]['inputSchema']['properties']), {'agent_type', 'task'})
+        self.assertEqual(set(tools[0]['inputSchema']['properties']), {'agent_type', 'task', 'candidate_id'})
         self.assertEqual(tools[0]['inputSchema']['properties']['agent_type']['enum'],
                          ['coding', 'research'])
 
