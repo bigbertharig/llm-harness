@@ -1,0 +1,29 @@
+{
+  "purpose": "Small matched discovery comparison; judge source relevance after fetching pages",
+  "cases": [
+    {
+      "id": "person",
+      "intent": "person",
+      "query": "site:edu \"GIS program director\" \"industry partnerships\"",
+      "useful_source": "An official university page identifying a GIS program leader or partnership contact"
+    },
+    {
+      "id": "organization",
+      "intent": "organization",
+      "query": "site:ucgis.org \"member institutions\" \"contact\"",
+      "useful_source": "An official UCGIS page identifying member institutions or a usable contact path"
+    },
+    {
+      "id": "publication",
+      "intent": "publication",
+      "query": "urban heat island remote sensing systematic review 2024 2025",
+      "useful_source": "A scholarly review or its publisher or repository record with authors and publication date"
+    },
+    {
+      "id": "event",
+      "intent": "event",
+      "query": "geospatial conference 2027 call for papers deadline",
+      "useful_source": "An official conference page showing a 2027 submission deadline"
+    }
+  ]
+}

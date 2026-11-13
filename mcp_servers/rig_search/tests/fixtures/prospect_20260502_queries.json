@@ -1,0 +1,44 @@
+﻿{
+  "source_run": "research_prospector/history/20260502_205120",
+  "baseline_provider": "legacy research shoulder DDG, filtered results",
+  "cases": [
+    {
+      "query": "site:edu \"GIS program director\" \"industry partnerships\"",
+      "baseline_urls": [
+        "https://dusk.geo.orst.edu/gis/Chapter19_notes.pdf",
+        "https://www.cgu.edu/academics/program/geographic-information-systems/",
+        "https://usccareers.usc.edu/job/los-angeles/gis-program-specialist/1209/74384216736",
+        "https://www.franklin.edu/career-guide/computer-programmers/what-do-gis-program-managers-do",
+        "https://www.sco.wisc.edu/jobs/26501/"
+      ]
+    },
+    {
+      "query": "site:edu \"geospatial science\" \"capstone coordinator\"",
+      "baseline_urls": [
+        "https://resources.geospatial.psu.edu/mgis/capstone_resources/capstone_project_ideas_faculty",
+        "https://resources.geospatial.psu.edu/mgis/capstone_resources/capstone_overview/",
+        "https://www.memphis.edu/earthsciences/programs/graduate/gis_certificate.php",
+        "https://uwf.edu/programs/online/gis-administration-ms/",
+        "https://www.kennesaw.edu/academic-advising/explore-majors/geospatial-sciences.php"
+      ]
+    },
+    {
+      "query": "site:ucgis.org \"member institutions\" \"contact\"",
+      "baseline_urls": [
+        "https://www.ucgis.org/index.php?option=com_dailyplanetblog&tag=gisat-body-of-knowledge",
+        "https://www.ucgis.org/membersonly/Administration/news-and-stories",
+        "https://www.ucgis.org/?trk=organization_guest_main-feed-card_reshare-text"
+      ]
+    },
+    {
+      "query": "site:aag.org \"geography programs\" \"director\"",
+      "baseline_urls": [
+        "https://www.aag.org/governance/",
+        "https://www.aag.org/content-type/careers/",
+        "https://www.aag.org/guide-to-geography-programs-and-opportunities/",
+        "https://www.aag.org/",
+        "https://www.aag.org/about-us/"
+      ]
+    }
+  ]
+}
