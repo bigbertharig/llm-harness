@@ -4,9 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rig-search"
-version = "0.2.0"
+version = "0.3.0"
 description = "Reusable web search router with MCP and CLI adapters"
 requires-python = ">=3.10"
+
+[project.optional-dependencies]
+duckduckgo = ["ddgs>=9,<10"]
 
 [project.scripts]
 rig-search = "rig_search.cli:main"

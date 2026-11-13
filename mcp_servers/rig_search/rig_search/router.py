@@ -6,10 +6,10 @@ import sqlite3
 import time
 from contextlib import contextmanager
 
-from . import providers, searxng
+from . import duckduckgo, providers, searxng
 
 
-PROVIDER_NAMES = ("searxng", "tavily", "exa", "firecrawl", "serpapi")
+PROVIDER_NAMES = ("searxng", "duckduckgo", "tavily", "exa", "firecrawl", "serpapi")
 KEY_ENV = {"tavily": "TAVILY_API_KEY", "exa": "EXA_API_KEY",
            "firecrawl": "FIRECRAWL_API_KEY", "serpapi": "SERPAPI_API_KEY"}
 
@@ -52,7 +52,7 @@ class BudgetState:
             row = db.execute("SELECT until_unix FROM cooldown WHERE provider=?", (provider,)).fetchone()
             if row and row[0] > now:
                 return "cooldown"
-            if provider == "searxng":
+            if provider in ("searxng", "duckduckgo"):
                 return "ready"
             if cap <= 0:
                 return "budget_disabled"
@@ -114,8 +114,8 @@ def search(query, max_results, endpoint=None, *, env=None, state=None, min_resul
         raise ValueError("invalid result target")
     endpoint = env.get("SEARXNG_URL", "") if endpoint is None else endpoint
     configured_paid = any(env.get(KEY_ENV[name]) and _cap(env, name) > 0
-                          for name in names if name != "searxng")
-    if state is None and (configured_paid or env.get("RIG_SEARCH_STATE")):
+                          for name in names if name in KEY_ENV)
+    if state is None and (configured_paid or "duckduckgo" in names or env.get("RIG_SEARCH_STATE")):
         state = BudgetState(env.get("RIG_SEARCH_STATE") or
                             Path.home() / ".local/state/rig-search/state.sqlite3")
     start = state.next_start(len(names)) if state and mode == "rotate" and provider is None else 0
@@ -125,21 +125,22 @@ def search(query, max_results, endpoint=None, *, env=None, state=None, min_resul
     any_error = False
     last_data = None
     for name in ordered:
-        key = env.get(KEY_ENV[name], "") if name != "searxng" else ""
+        key = env.get(KEY_ENV[name], "") if name in KEY_ENV else ""
         if name == "searxng" and not endpoint:
             attempts.append({"provider": name, "status": "unconfigured"})
             continue
-        if name != "searxng" and (not key or _cap(env, name) == 0):
+        if name in KEY_ENV and (not key or _cap(env, name) == 0):
             attempts.append({"provider": name, "status": "unconfigured"})
             continue
         if state:
-            ready = state.reserve(name, _cap(env, name) if name != "searxng" else 0)
+            ready = state.reserve(name, _cap(env, name) if name in KEY_ENV else 0)
             if ready != "ready":
                 attempts.append({"provider": name, "status": ready})
                 continue
         searcher = searchers.get(name)
         if searcher is None:
             data = (searxng.search(query, max_results, endpoint) if name == "searxng" else
+                    duckduckgo.search(query, max_results) if name == "duckduckgo" else
                     providers.search(name, query, max_results, key))
         else:
             data = searcher(query, max_results)
@@ -185,7 +186,7 @@ def search(query, max_results, endpoint=None, *, env=None, state=None, min_resul
                               for a in attempts),
               "backend_latency_seconds": round(sum(a["backend_latency_seconds"] for a in called), 3)}
     if len(called) == 1 and last_data is not None:
-        for field in ("http_status", "unresponsive_engines", "suggestions", "corrections",
+        for field in ("http_status", "search_backend", "unresponsive_engines", "suggestions", "corrections",
                       "retry_after_seconds"):
             if field in last_data:
                 result[field] = last_data[field]

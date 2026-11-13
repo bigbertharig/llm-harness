@@ -80,7 +80,7 @@ def handle(message, endpoint):
         return None
     if method == "initialize":
         result = {"protocolVersion": "2025-06-18", "capabilities": {"tools": {"listChanged": False}},
-                  "serverInfo": {"name": "rig-search", "version": "0.2.0"},
+                  "serverInfo": {"name": "rig-search", "version": "0.3.0"},
                   "instructions": "Use search_web for web discovery. Choose a concise query, then inspect returned source URLs and snippets. Fetch a page with a separate page-reading tool before relying on details absent from a snippet."}
     elif method == "tools/list":
         result = {"tools": [TOOL]}

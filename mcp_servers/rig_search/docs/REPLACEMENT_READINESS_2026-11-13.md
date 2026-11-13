@@ -9,12 +9,14 @@ They are too small for a universal ranking, but they give a working order:
 | Provider | Best current role | Observed limit |
 | --- | --- | --- |
 | SearXNG | Free first pass for broad queries and an available local MCP baseline | The narrow person query returned zero; Google CSE has previously reported upstream throttling. |
+| DuckDuckGo | Separate free direct fallback when SearXNG is sparse | The Pi's SearXNG DuckDuckGo engine was disabled after CAPTCHA failures; the direct adapter still needs quality and rate-limit validation. |
 | Exa | Official organization pages, scholarly reviews, and event calls | Its person hits were mirrors of one PDF; semantic matches need deduplication and verification. |
 | Tavily | Broad fallback when a first pass is sparse | All five person hits missed the requested role in this trial. |
 | Firecrawl | Broad discovery and a future search-to-content experiment | Its event hits included social and aggregator pages; this trial did not test its scrape option. |
 | SerpApi | Last fallback or a fresh targeted probe | Its site-restricted results were unrelated during a documented Google `site:` issue. |
 
-The router's fixed order remains SearXNG, Tavily, Exa, Firecrawl, SerpApi.
+The router's fixed order is now SearXNG, direct DuckDuckGo, Tavily, Exa,
+Firecrawl, SerpApi.
 Intent-aware routing is an experiment to build after the next research-arm
 replay, not an implemented feature. Page fetching and CPU distribution remain
 outside this search tool.
@@ -22,7 +24,7 @@ outside this search tool.
 ## Direct calls
 
 `search_web` now accepts optional `provider`: `auto`, `searxng`,
-`tavily`, `exa`, `firecrawl`, or `serpapi`. For example,
+`duckduckgo`, `tavily`, `exa`, `firecrawl`, or `serpapi`. For example,
 `{"query":"urban heat island systematic review","provider":"exa","max_results":5}`
 calls Exa only, subject to its configured cap. `provider:"auto"` uses the
 configured fallback or rotation. A named provider does not fall back on
@@ -72,10 +74,31 @@ SerpApi returned three URLs, but its first was a GitHub issue despite the
 `site:docs.python.org` query. This verifies the selector and reinforces the
 need for source checks.
 
+## Direct DuckDuckGo option
+
+The separate `duckduckgo` provider uses the optional `ddgs` package with
+`backend="duckduckgo"` fixed. The package's default `auto` mode is
+metasearch, so using it would mislabel results from other engines. The old
+`tools/local_mcp_web_search.py` launches the research shoulder's helper,
+which may fall back to Bing without changing its top-level DDG label. The new
+adapter instead reports a DDG limit or error and lets this router choose a
+different named provider. It shares the SQLite cooldown state and requires no
+API key or paid request cap. The Pi's SearXNG DDG engine is still disabled;
+this direct helper does not change SearXNG settings.
+
+The first live named DDG call on the Pi returned no results (`ddgs` raised
+`DDGSException: No results found`); a second broad query did the same. A
+direct check of DDG's HTML endpoint returned HTTP 202 with no result links.
+The adapter surfaced the failure and its router cooldown, rather than
+presenting another engine's results as DDG. This option is implemented and
+selectable, but live DDG availability on this Pi is currently unverified.
+Keep SearXNG or another provider in the fallback list and rerun a bounded
+quality replay when DDG is accessible.
+
 ## Acceptance before switching the default
 
 1. The deterministic package and comparison-runner contracts pass. On the Pi,
-   17 package tests and 3 existing-runner integration tests passed.
+   20 package tests and 3 existing-runner integration tests passed.
 2. Compare the new SearXNG-only lane against the old MCP and pass one native
    candidate case. The direct comparison passed on one live Python
    documentation query: both servers returned five URLs, the same first

@@ -8,6 +8,7 @@ import subprocess
 import sys
 from threading import Thread
 import unittest
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 
@@ -90,7 +91,8 @@ class SearchContract(unittest.TestCase):
         self.assertEqual(data["suggestions"], ["narrow query", "another query"])
         self.assertEqual(data["corrections"], ["corrected query"])
         self.assertEqual(data["result_count"], 3)
-        empty = mcp.tool_call({"name": "search_web", "arguments": {"query": "all blocked"}}, self.endpoint)
+        with patch.dict(os.environ, {"RIG_SEARCH_PROVIDERS": "searxng"}):
+            empty = mcp.tool_call({"name": "search_web", "arguments": {"query": "all blocked"}}, self.endpoint)
         self.assertTrue(empty["isError"])
         self.assertEqual(empty["structuredContent"]["result_count"], 0)
 
@@ -109,7 +111,8 @@ class SearchContract(unittest.TestCase):
     def test_cli_contract(self):
         proc = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1] / "search.py"),
                                "search terms", "--max-results", "2", "--endpoint", self.endpoint],
-                              text=True, capture_output=True, timeout=8)
+                              text=True, capture_output=True, timeout=8,
+                              env={**os.environ, "RIG_SEARCH_PROVIDERS": "searxng"})
         self.assertEqual(proc.returncode, 0, proc.stderr)
         data = json.loads(proc.stdout)
         self.assertEqual(data["unique_urls"], ["https://example.org/a", "https://example.org/b"])
@@ -128,7 +131,8 @@ class SearchContract(unittest.TestCase):
         proc = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1] / "mcp_server.py")],
                               input="\n".join(map(json.dumps, messages)) + "\n",
                               text=True, capture_output=True, timeout=8,
-                              env={**os.environ, "SEARXNG_URL": self.endpoint})
+                              env={**os.environ, "SEARXNG_URL": self.endpoint,
+                                   "RIG_SEARCH_PROVIDERS": "searxng"})
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(proc.stderr, "")
         replies = [json.loads(line) for line in proc.stdout.splitlines()]

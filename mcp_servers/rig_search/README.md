@@ -2,9 +2,10 @@
 
 Experimental web discovery tool in the main Pi's `llm-harness/mcp_servers/rig_search`
 directory. It normalizes search
-hits from SearXNG, Tavily, Exa, Firecrawl, and SerpApi into one `search_web`
-contract. Projects retain their own query strategy, ranking, page selection,
-and acceptance rules. This package uses only the Python standard library.
+hits from SearXNG, direct DuckDuckGo, Tavily, Exa, Firecrawl, and SerpApi into
+one `search_web` contract. Projects retain their own query strategy, ranking,
+page selection, and acceptance rules. The core uses the Python standard
+library; the direct DuckDuckGo adapter optionally uses `ddgs`.
 
 Entry points:
 
@@ -16,7 +17,7 @@ Installed commands are `rig-search`, `rig-search-mcp`, and `rig-search-ingest`.
 
 ## Search routing
 
-The default order is `searxng,tavily,exa,firecrawl,serpapi`. In the default
+The default order is `searxng,duckduckgo,tavily,exa,firecrawl,serpapi`. In the default
 `fallback` mode, every query starts with the first provider in that list.
 Set `RIG_SEARCH_ROUTING_MODE=rotate` to start successive queries at the next
 provider; the position persists in local state. If a provider returns
@@ -27,12 +28,19 @@ It stops once the result target is met. The response records every attempt and
 labels each hit with its provider. Result counts are discovery yield, not a
 relevance or factual accuracy score.
 
-To call one provider explicitly, pass `provider` as `searxng`, `tavily`,
-`exa`, `firecrawl`, or `serpapi` to the MCP `search_web` tool. `auto` (or
+To call one provider explicitly, pass `provider` as `searxng`,
+`duckduckgo`, `tavily`, `exa`, `firecrawl`, or `serpapi` to the MCP
+`search_web` tool. `auto` (or
 omitting the field) uses normal routing. An explicit provider must appear in
 `RIG_SEARCH_PROVIDERS`; it makes at most one upstream request and never falls
 back. The same choice is available from `search.py --provider exa "query"`.
 Each paid provider still needs its key, positive cap, and shared state budget.
+DuckDuckGo needs no key; install the optional `ddgs` dependency with
+`pip install '.[duckduckgo]'` or use the Pi's existing `ddgs` installation.
+The adapter forces the library's `duckduckgo` backend. It does not inherit the
+older helper's hidden Bing fallback. Rate-limit and CAPTCHA errors trigger
+the router's shared cooldown. SearXNG's own DuckDuckGo engine remains disabled
+on this Pi, independently of this direct helper.
 
 Set `RIG_SEARCH_PROVIDERS` to a comma-separated subset in preferred order.
 For example, `searxng,tavily,exa` uses only those three. When only
@@ -48,14 +56,16 @@ The optional provider environment variables are:
 | Firecrawl | `FIRECRAWL_API_KEY` | `RIG_SEARCH_MONTHLY_CAP_FIRECRAWL` |
 | SerpApi | `SERPAPI_API_KEY` | `RIG_SEARCH_MONTHLY_CAP_SERPAPI` |
 
-Each optional provider needs both a key and a positive cap. Every cap
+Each paid provider needs both a key and a positive cap. Every paid cap
 defaults to 0. Set conservative caps based on the account's current allowance
 and usage elsewhere. The cap counts attempted requests by this tool, including
 uncertain network failures; it is not an account-wide billing limit. Exa and
 Firecrawl bill in credits rather than one universal request unit, so their
 request caps cannot guarantee staying inside a credit allowance. Set account
 spend limits where available and check current vendor terms before enabling.
-SearXNG has no local monthly cap here, though its upstream engines can throttle.
+SearXNG and direct DuckDuckGo have no monthly request cap here, though their
+upstream services can throttle. DuckDuckGo rate-limit signals use the shared
+cooldown state.
 
 `RIG_SEARCH_STATE` selects the SQLite state file. With optional providers
 configured, it defaults to `~/.local/state/rig-search/state.sqlite3`. Put it on
@@ -135,8 +145,13 @@ text length. Per-domain pacing belongs at the coordinator.
 ## Status and tests
 
 This is an isolated prototype. The harness still has its original SearXNG
-server; its MCP registration has not moved here. The five providers were
-compared live on four matched queries from the main Pi. This small trial
+server; its MCP registration has not moved here. The original five providers
+were compared live on four matched queries from the main Pi. Direct DuckDuckGo
+was added afterward as a sixth option and needs a matched quality replay.
+Its first live Pi probe returned no DDG hits, and the DDG HTML endpoint
+returned HTTP 202 without results; use fallback until a later live check
+confirms availability.
+The small original trial
 suggests an intent-aware order, but the router still uses fixed fallback or
 rotation. Account usage elsewhere and future API changes require separate
 checks.

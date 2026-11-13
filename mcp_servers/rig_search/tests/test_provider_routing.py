@@ -89,6 +89,27 @@ class AdapterTests(unittest.TestCase):
 
 
 class RoutingTests(unittest.TestCase):
+    def test_free_duckduckgo_cools_and_falls_back(self):
+        with TemporaryDirectory() as temp:
+            env = {"RIG_SEARCH_PROVIDERS": "duckduckgo,searxng",
+                   "SEARXNG_URL": "http://local"}
+            state = router.BudgetState(Path(temp) / "state.sqlite3")
+            calls = []
+            searchers = {
+                "duckduckgo": lambda *_: (calls.append("duckduckgo") or
+                                         data(None, limited=True, error="duckduckgo rate_limited")),
+                "searxng": lambda *_: (calls.append("searxng") or
+                                     data("https://local.example/")),
+            }
+            first = router.search("research query", 5, env=env, state=state,
+                                  searchers=searchers, min_results=1)
+            second = router.search("research query", 5, env=env, state=state,
+                                   searchers=searchers, min_results=1)
+            self.assertEqual(calls, ["duckduckgo", "searxng", "searxng"])
+            self.assertEqual(first["attempts"][0]["status"], "rate_limited")
+            self.assertEqual(second["attempts"][0]["status"], "cooldown")
+            self.assertEqual(second["provider"], "searxng")
+
     def test_specific_provider_does_not_rotate_or_fall_back(self):
         with TemporaryDirectory() as temp:
             env = {"RIG_SEARCH_PROVIDERS": "searxng,exa", "SEARXNG_URL": "http://local",
