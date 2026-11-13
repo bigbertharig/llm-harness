@@ -94,6 +94,21 @@ class ComparisonSearxngContract(unittest.TestCase):
             self.assertTrue(comparison.baseline_passes(
                 comparison.direct_baseline(server, {"query": case["query"], "max_results": 10}, Path(temp)), case))
 
+    def test_rig_search_backend_uses_private_env_and_named_provider(self):
+        case = comparison.QUERIES[0]
+        with tempfile.TemporaryDirectory() as temp:
+            private_env = Path(temp) / ".env"
+            private_env.write_text(f"SEARXNG_URL={self.endpoint}\nRIG_SEARCH_PROVIDERS=searxng\n")
+            with patch.dict(os.environ, {"RIG_SEARCH_ENV_FILE": str(private_env)}):
+                server = comparison.search_server("rig_search", Path(temp) / "calls.jsonl")
+                self.assertEqual(server["command"][-4:],
+                                 ["--env-file", str(private_env), "--providers", "searxng"])
+                direct = comparison.direct_baseline(
+                    server, {"query": case["query"], "max_results": 10,
+                             "provider": "searxng"}, Path(temp))
+            self.assertTrue(comparison.baseline_passes(direct, case))
+            self.assertEqual(direct["structuredContent"]["requested_provider"], "searxng")
+
 
 if __name__ == "__main__":
     unittest.main()

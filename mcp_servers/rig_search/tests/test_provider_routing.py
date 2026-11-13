@@ -89,6 +89,28 @@ class AdapterTests(unittest.TestCase):
 
 
 class RoutingTests(unittest.TestCase):
+    def test_specific_provider_does_not_rotate_or_fall_back(self):
+        with TemporaryDirectory() as temp:
+            env = {"RIG_SEARCH_PROVIDERS": "searxng,exa", "SEARXNG_URL": "http://local",
+                   "EXA_API_KEY": "secret", "RIG_SEARCH_MONTHLY_CAP_EXA": "1",
+                   "RIG_SEARCH_ROUTING_MODE": "rotate"}
+            state = router.BudgetState(Path(temp) / "state.sqlite3")
+            calls = []
+            searchers = {"searxng": lambda *_: self.fail("unexpected fallback"),
+                         "exa": lambda *_: (calls.append("exa") or data(None))}
+            result = router.search("research query", 5, env=env, state=state,
+                                   searchers=searchers, provider="exa")
+            self.assertEqual(calls, ["exa"])
+            self.assertEqual(result["requested_provider"], "exa")
+            self.assertEqual([a["provider"] for a in result["attempts"]], ["exa"])
+            self.assertEqual(state.next_start(2), 0)
+            exhausted = router.search("research query", 5, env=env, state=state,
+                                      searchers=searchers, provider="exa")
+            self.assertEqual(exhausted["attempts"], [{"provider": "exa",
+                                                      "status": "budget_exhausted"}])
+            with self.assertRaises(ValueError):
+                router.search("research query", 5, env=env, provider="tavily")
+
     def test_rotates_and_reserves_paid_budget_across_calls(self):
         with TemporaryDirectory() as temp:
             env = {"RIG_SEARCH_PROVIDERS": "tavily,exa",

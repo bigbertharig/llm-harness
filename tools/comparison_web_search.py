@@ -22,7 +22,8 @@ from search_provider_benchmark import QUERIES
 
 PYTHON = '/home/bryan/llm-orchestration-venv/bin/python'
 SERVERS = {'ddg': common.ROOT / 'tools/local_mcp_web_search.py',
-           'searxng': common.ROOT / 'mcp_servers/searxng/server.py'}
+           'searxng': common.ROOT / 'mcp_servers/searxng/server.py',
+           'rig_search': common.ROOT / 'mcp_servers/rig_search/mcp_server.py'}
 DRIVERS = {'pi': old_drivers.run_pi, 'deepseek': old_drivers.run_deepseek,
            'opencode': old_drivers.run_opencode, 'codex': extra_drivers.run_codex,
            'nanobot': extra_drivers.run_nanobot, 'hermes': run_hermes}
@@ -42,10 +43,14 @@ def result_root(run_id, backend):
 
 
 def search_server(backend, receipt):
-    python = sys.executable if backend == 'searxng' else PYTHON
+    python = sys.executable if backend in ('searxng', 'rig_search') else PYTHON
     command = [python, str(SERVERS[backend]), str(receipt)]
     if backend == 'searxng':
         command += ['--endpoint', os.environ['SEARXNG_URL']]
+    elif backend == 'rig_search':
+        command += ['--env-file', os.environ.get('RIG_SEARCH_ENV_FILE',
+                                                str(common.ROOT / '.env')),
+                    '--providers', os.environ.get('RIG_SEARCH_COMPARE_PROVIDERS', 'searxng')]
     return {'name': 'web_search', 'command': command,
             'tools': ['search_web']}
 
@@ -189,6 +194,9 @@ def main():
     args = parser.parse_args()
     if args.backend == 'searxng' and not os.environ.get('SEARXNG_URL'):
         parser.error('SearXNG requires SEARXNG_URL in the runner environment')
+    if args.backend == 'rig_search' and not Path(os.environ.get(
+            'RIG_SEARCH_ENV_FILE', str(common.ROOT / '.env'))).is_file():
+        parser.error('rig_search requires a private env file')
     cases = [x for x in QUERIES if args.case in (None, x['id'])]
     rows = []
     for case in cases:

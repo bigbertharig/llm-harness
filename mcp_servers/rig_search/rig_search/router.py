@@ -93,7 +93,7 @@ def _cap(env, provider):
 
 
 def search(query, max_results, endpoint=None, *, env=None, state=None, min_results=None,
-           searchers=None):
+           searchers=None, provider=None):
     """Return normalized URLs, trying another provider only for insufficient yield.
 
     Keys enable a provider; a positive local monthly cap authorizes its use.
@@ -101,6 +101,10 @@ def search(query, max_results, endpoint=None, *, env=None, state=None, min_resul
     """
     env = os.environ if env is None else env
     names = _configured(env)
+    if provider is not None:
+        if provider not in names:
+            raise ValueError("provider is not enabled in RIG_SEARCH_PROVIDERS")
+        names = [provider]
     mode = env.get("RIG_SEARCH_ROUTING_MODE", "fallback").strip().lower()
     if mode not in ("fallback", "rotate"):
         raise ValueError("RIG_SEARCH_ROUTING_MODE must be fallback or rotate")
@@ -114,7 +118,7 @@ def search(query, max_results, endpoint=None, *, env=None, state=None, min_resul
     if state is None and (configured_paid or env.get("RIG_SEARCH_STATE")):
         state = BudgetState(env.get("RIG_SEARCH_STATE") or
                             Path.home() / ".local/state/rig-search/state.sqlite3")
-    start = state.next_start(len(names)) if state and mode == "rotate" else 0
+    start = state.next_start(len(names)) if state and mode == "rotate" and provider is None else 0
     ordered = names[start:] + names[:start]
     searchers = searchers or {}
     rows, seen, attempts = [], set(), []
@@ -175,6 +179,7 @@ def search(query, max_results, endpoint=None, *, env=None, state=None, min_resul
     last_ok = max((i for i, a in enumerate(attempts) if a["status"] == "ok"), default=-1)
     result = {"results": rows, "result_count": len(rows), "unique_urls": urls,
               "unique_url_count": len(urls), "attempts": attempts,
+              "requested_provider": provider or "auto",
               "rate_limit_signal": last_limited > last_ok,
               "degraded": any(a.get("degraded") or a["status"] in ("error", "rate_limited")
                               for a in attempts),

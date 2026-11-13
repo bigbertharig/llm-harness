@@ -27,6 +27,13 @@ It stops once the result target is met. The response records every attempt and
 labels each hit with its provider. Result counts are discovery yield, not a
 relevance or factual accuracy score.
 
+To call one provider explicitly, pass `provider` as `searxng`, `tavily`,
+`exa`, `firecrawl`, or `serpapi` to the MCP `search_web` tool. `auto` (or
+omitting the field) uses normal routing. An explicit provider must appear in
+`RIG_SEARCH_PROVIDERS`; it makes at most one upstream request and never falls
+back. The same choice is available from `search.py --provider exa "query"`.
+Each paid provider still needs its key, positive cap, and shared state budget.
+
 Set `RIG_SEARCH_PROVIDERS` to a comma-separated subset in preferred order.
 For example, `searxng,tavily,exa` uses only those three. When only
 SearXNG is configured, no state database is needed and its previous behavior
@@ -71,6 +78,15 @@ export RIG_SEARCH_MONTHLY_CAP_EXA=25
 python3 search.py "research topic" --max-results 5 --min-results 3
 python3 mcp_server.py
 ```
+
+For an MCP child process that does not inherit the shell environment, launch
+`python3 mcp_server.py --env-file /home/bryan/llm-harness/.env`. The server
+reads literal key/value entries without executing shell code. The optional
+`--providers searxng` narrows that process for a staged comparison; it does
+not remove keys from the private file. The harness comparison runner selects
+this package with `--backend rig_search` and defaults to SearXNG-only for
+that lane. Set `RIG_SEARCH_COMPARE_PROVIDERS` to test another enabled subset.
+This keeps paid calls out of the default harness gate.
 
 The CLI exits nonzero if every available provider fails and yields no URLs.
 The MCP tool accepts a 3–300 character query, `max_results` 1–10, and optional
@@ -133,3 +149,5 @@ relevance verdict.
 
 The matched four-case, under-5%-of-free-tier provider trial is recorded in
 [`docs/PROVIDER_COMPARISON_2026-11-13.md`](docs/PROVIDER_COMPARISON_2026-11-13.md).
+The staged harness switch and old-tool comparison are in
+[`docs/REPLACEMENT_READINESS_2026-11-13.md`](docs/REPLACEMENT_READINESS_2026-11-13.md).

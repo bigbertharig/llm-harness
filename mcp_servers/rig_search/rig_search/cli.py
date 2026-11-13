@@ -6,7 +6,7 @@ import os
 import sqlite3
 
 from .searxng import MAX_RESULTS
-from .router import search
+from .router import PROVIDER_NAMES, search
 
 
 def main(argv=None):
@@ -16,6 +16,8 @@ def main(argv=None):
     parser.add_argument("--min-results", type=int, default=None,
                         help="try a fallback until this many distinct URLs are found (default: 3)")
     parser.add_argument("--endpoint", default=os.environ.get("SEARXNG_URL", ""))
+    parser.add_argument("--provider", choices=PROVIDER_NAMES,
+                        help="call only this enabled provider, without fallback")
     args = parser.parse_args(argv)
     query = args.query.strip()
     if not 3 <= len(query) <= 300:
@@ -23,7 +25,8 @@ def main(argv=None):
     if args.min_results is not None and not 1 <= args.min_results <= args.max_results:
         parser.error("min-results must be between 1 and max-results")
     try:
-        data = search(query, args.max_results, args.endpoint, min_results=args.min_results)
+        data = search(query, args.max_results, args.endpoint, min_results=args.min_results,
+                      provider=args.provider)
     except (ValueError, OSError, sqlite3.Error) as exc:
         parser.error(str(exc))
     print(json.dumps(data, ensure_ascii=False))
