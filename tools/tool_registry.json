@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scope": "Agent-callable MCP tools found in harness code and the 2026-10-29 through 2026-11-14 comparison receipts",
+  "scope": "Agent-callable MCP tools found in harness code, the 2026-10-29 through 2026-11-14 comparison receipts, and county-map unified MCP discovery",
   "surfaces": {
     "rig_search": {
       "owner": "llm-harness",
@@ -99,6 +99,13 @@
       "implementation": "tools/geometry-mcp via tools/mcp-runtime/server.py",
       "purpose": "Resolve and compare installed geography and retrieve selected shapes",
       "tools": [{"name": "get_tool_help"}, {"name": "get_catalog"}, {"name": "get_pack"}, {"name": "get_geography"}, {"name": "resolve_point"}, {"name": "resolve_deep_point"}, {"name": "get_loc_id_info"}, {"name": "identify_dataset_geography"}, {"name": "identify_reference_system"}, {"name": "convert_reference"}, {"name": "compare_geographies"}, {"name": "get_shape"}]
+    },
+    "daedalmap_unified": {
+      "owner": "county-map",
+      "status": "external_discovery_2026_11_14",
+      "implementation": "mcp_stdio.py and mapmover/routes/mcp.py",
+      "purpose": "Unified hosted discovery for geography, geometry, data packs, and disaster events; offline stdio entrypoint provides discovery only",
+      "tools": [{"name": "get_tool_help"}, {"name": "get_catalog"}, {"name": "get_pack"}, {"name": "get_geography"}, {"name": "query_geometry"}, {"name": "get_event"}, {"name": "resolve_point"}, {"name": "resolve_deep_point"}, {"name": "resolve_bbox"}, {"name": "resolve_deep_bbox"}, {"name": "get_loc_id_info"}, {"name": "identify_dataset_geography"}, {"name": "identify_reference_system"}, {"name": "convert_reference"}, {"name": "compare_geographies"}, {"name": "get_shape"}, {"name": "get_data"}]
     },
     "deepwiki": {
       "owner": "external MCP service",

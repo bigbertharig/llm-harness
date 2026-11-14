@@ -16,8 +16,8 @@ spec.loader.exec_module(export)
 def test_registry_has_every_known_surface_and_existing_harness_code():
     registry = json.loads((ROOT / "tools/tool_registry.json").read_text())
     surfaces = registry["surfaces"]
-    assert len(surfaces) == 16
-    assert sum(len(surface["tools"]) for surface in surfaces.values()) == 42
+    assert len(surfaces) == 17
+    assert sum(len(surface["tools"]) for surface in surfaces.values()) == 59
     for name, surface in surfaces.items():
         assert surface["tools"], name
         names = [tool["name"] for tool in surface["tools"]]

@@ -13,7 +13,7 @@ Updated 2026-11-14. This inventory distinguishes the dashboard's enabled tools f
 
 The local-parent variant of the subagent adapter exposes `delegate_task` instead of `delegate_local_task`. It is a different surface of the same harness adapter, not a fifth dashboard tool.
 
-The registry records 16 MCP surfaces and 42 named entries across them. Names repeat across surfaces: `search_web`, `fetch_page`, `delegate_task`, `get_catalog`, and `get_tool_help` each have more than one implementation or service. Only the four dashboard entries are live in gateway chat. The six search providers are backends of one entry, not six additional tools.
+The registry records 17 MCP surfaces and 59 named entries across them. Names repeat across surfaces: `search_web`, `fetch_page`, `delegate_task`, `get_catalog`, and `get_tool_help` each have more than one implementation or service. Only the four dashboard entries are live in gateway chat. The six search providers are backends of one entry, not six additional tools.
 
 ## Other harness-owned tools and test fixtures
 
@@ -36,6 +36,7 @@ These were reached through local loopback tunnels or public MCP endpoints during
 | --- | --- | --- |
 | DaedalMap Research, 10 captured tools | `get_tool_help`, `how_research_mcp_works`, `where_is_research_data`, `get_catalog`, `resolve_research_geography`, `search_research_sources`, `resolve_research_corpus_intent`, `get_research_pack`, `ask_research_sources`, `query_research_source_data` | Windows local MCP against installed data; Research cases passed for Pi and DeepSeek in the six-server matrix. `where_is_research_data` can change the local data root, so it requires a stricter policy than read-only discovery. |
 | DaedalMap Geometry, 12 captured tools | `get_tool_help`, `get_catalog`, `get_pack`, `get_geography`, `resolve_point`, `resolve_deep_point`, `get_loc_id_info`, `identify_dataset_geography`, `identify_reference_system`, `convert_reference`, `compare_geographies`, `get_shape` | Local MCP; direct calls worked, but the shared 30B harness block failed both geometry cases. Empty `get_shape` arguments and a roughly 30 KB help result were observed. |
+| DaedalMap unified hosted/stdio discovery, 17 tools | `get_tool_help`, `get_catalog`, `get_pack`, `get_geography`, `query_geometry`, `get_event`, `resolve_point`, `resolve_deep_point`, `resolve_bbox`, `resolve_deep_bbox`, `get_loc_id_info`, `identify_dataset_geography`, `identify_reference_system`, `convert_reference`, `compare_geographies`, `get_shape`, `get_data` | Current 2026-11-14 offline `mcp_stdio.py tools/list` discovery. Hosted execution, account/credit policy, and local data are separate; this discovery call did not test execution. It overlaps with the local Geometry names but is a distinct combined surface. |
 | DeepWiki | `read_wiki_structure` | Two public MCP matrix cases tested repository outlines. |
 | OpenAI Docs | `search_openai_docs` | Two public MCP matrix cases tested documentation lookup. |
 | Cloudflare Docs | `search_cloudflare_documentation` | Two public MCP matrix cases tested result-grounded URLs. |
