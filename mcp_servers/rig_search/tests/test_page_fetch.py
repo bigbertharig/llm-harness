@@ -19,6 +19,16 @@ def test_rejects_private_dns_and_non_https():
         page_fetch._public_address("https://user:pass@example.org/")
 
 
+def test_prefers_public_ipv4_when_dns_has_both_families():
+    answers = [
+        (socket.AF_INET6, 1, 0, "", ("2600:1901:0:c831::", 443, 0, 0)),
+        (socket.AF_INET, 1, 0, "", ("34.107.134.59", 443)),
+    ]
+    with patch.object(socket, "getaddrinfo", return_value=answers):
+        _, address = page_fetch._public_address("https://pubmed.ncbi.nlm.nih.gov/39389132/")
+    assert address == "34.107.134.59"
+
+
 def test_mcp_fetch_page_returns_bounded_cpu_text():
     with patch.object(mcp, "fetch_page", return_value={"url": "https://example.org/a",
                                                     "title": "Source", "text": "Evidence",

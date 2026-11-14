@@ -62,7 +62,10 @@ def _public_address(url):
     addresses = {item[4][0] for item in socket.getaddrinfo(parsed.hostname, 443, type=socket.SOCK_STREAM)}
     if not addresses or any(not ipaddress.ip_address(address).is_global for address in addresses):
         raise ValueError("URL resolves outside the public internet")
-    return parsed, sorted(addresses)[0]
+    # Prefer IPv4 when a public host has both families: this Pi has no IPv6 route.
+    # Validate every DNS answer above before selecting a pinned address.
+    return parsed, min(addresses, key=lambda address: (
+        ipaddress.ip_address(address).version != 4, address))
 
 
 def fetch_page(url, max_chars=12000, timeout=12):

@@ -1,6 +1,6 @@
 # Search: evidence and lessons
 
-Updated 2026-11-13. This is the entry point for search work in `rig-search`.
+Updated 2026-11-14. This is the entry point for search work in `rig-search`.
 The tool discovers candidate URLs; the research arm decides which pages to
 read and which claims to accept. Result count is not an answer-quality score.
 
@@ -127,10 +127,31 @@ info. They are still untrusted content. A page reader must independently
 enforce its own URL, DNS, redirect, response-size, and destination policy;
 `search_web` does not authorize fetching an arbitrary returned URL. The
 `fetch_page` tool separately validates public DNS, pins its TLS connection,
-checks redirects, and caps the response before extraction. It runs on the Pi
-CPU while the Orange Pi network is unavailable. The deterministic checks cover
+checks redirects, and caps the response before extraction. It runs on the Pi CPU. The Orange Pi workers were reachable again on
+2026-11-14, but this MCP has no worker dispatch yet. The deterministic checks cover
 private-address denial and secret-free receipts; the live MINFILE probe returned
 bounded source text without contacting a private rig address.
+
+## Cloud search and local model smoke (2026-11-14)
+
+A Pi dashboard Codex chat used `rig_search.search_web` with SearXNG,
+then `rig_search.fetch_page` on a Nature enhanced-weathering article,
+then `local_agents.delegate_local_task` for a bounded research review
+on `gpu-rig/harness-ornith-9b` (GPU 0). The local child receipt reports
+exit 0 and stable roster. It classified the article's carbon-removal
+estimates as modeled projections, not direct field measurements. The
+cloud chat and child receipts are kept in the Pi's private operations
+area, not this repository. The dashboard's saved activity list was
+empty, so the tool-by-tool sequence is corroborated by the cloud answer,
+the child receipt, and direct page-fetch checks rather than by a
+complete gateway activity trace.
+
+The first fetch failed because the page reader selected a public IPv6
+answer on a Pi without working IPv6. It now prefers IPv4 after validating
+all DNS answers. A direct check fetched USGS and the Nature article.
+PubMed returned HTTP 203 through IPv4, so publisher and repository
+access remains source-specific. Keep a bounded alternate-URL path and
+do not infer evidence from a search snippet when fetching fails.
 
 ## Next comparisons to keep this document honest
 
