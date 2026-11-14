@@ -1,10 +1,16 @@
 # rig-search
 
-Experimental web discovery tool in the main Pi's `llm-harness/mcp_servers/rig_search`
+Experimental web discovery and bounded page-reading tool in the main Pi's `llm-harness/mcp_servers/rig_search`
 directory. It normalizes search
 hits from SearXNG, direct DuckDuckGo, Tavily, Exa, Firecrawl, and SerpApi into
 one `search_web` contract. Projects retain their own query strategy, ranking,
-page selection, and acceptance rules. The core uses the Python standard
+page selection, and acceptance rules. `fetch_page` reads one selected public
+HTTPS page on the Pi CPU with public-DNS validation, pinned TLS connection,
+checked redirects, a 1 MB body limit, and bounded extracted text. The old
+research assistant's `scrape_pages.py` is a batch CPU task; its fetcher is not
+exposed directly because it follows redirects without public-address checks.
+The Orange Pi workers are a later dispatch option when their network is live.
+The core uses the Python standard
 library; the direct DuckDuckGo adapter optionally uses `ddgs`.
 
 Start with [Search: evidence and lessons](docs/SEARCH_OVERVIEW.md) for the

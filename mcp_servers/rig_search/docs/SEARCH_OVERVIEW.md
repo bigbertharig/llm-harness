@@ -95,8 +95,10 @@ the table is guidance for experiments, not implemented intent routing.
    search, fetch, extraction, and model stage.
 
 The tool currently implements provider calls, normalization, provenance,
-fallback, and local request caps. It does not yet implement query planning,
-relevance scoring, CPU page dispatch, or page verification. `ingest.py` can
+fallback, local request caps, and a bounded `fetch_page` reader on the Pi CPU.
+The reader returns selected public HTTPS page text with source URL and executor;
+it does not judge whether a claim is true. The tool does not yet implement query
+planning, relevance scoring, Orange Pi page dispatch, or page verification. `ingest.py` can
 accept a cloud model's search hits as explicit candidates.
 
 ## Harness and gateway safety boundary
@@ -112,7 +114,9 @@ Direct DuckDuckGo and paid provider calls now require the server-side
 `RIG_SEARCH_ALLOW_DIRECT_EGRESS=1` setting in addition to a configured
 provider, key, and positive cap where applicable. It defaults to off. Set it
 only in a trusted, budgeted profile; a model cannot enable it through tool
-arguments. Use `--providers searxng` for the first general-session rollout.
+arguments. The Pi dashboard's trusted profile loads the private provider caps
+and enables direct egress for the six-provider comparison. Other sessions can
+use `--providers searxng` for a free-only control.
 Do not treat provider selection as permission to send a secret or a full
 private prompt to the web. Keep query construction short and public-safe in
 the harness policy. The MCP receipt records call order, provider attempts,
@@ -121,10 +125,12 @@ counts, and health without copying queries or result URLs.
 Search results exclude private IP literals, localhost names, and URL user
 info. They are still untrusted content. A page reader must independently
 enforce its own URL, DNS, redirect, response-size, and destination policy;
-`search_web` does not authorize fetching an arbitrary returned URL. Keep
-fetch and search capabilities separate. Before enabling remote sessions,
-verify denied direct-provider calls, bounded budgets, secret-free receipts,
-and a query that cannot make the reader contact a private rig address.
+`search_web` does not authorize fetching an arbitrary returned URL. The
+`fetch_page` tool separately validates public DNS, pins its TLS connection,
+checks redirects, and caps the response before extraction. It runs on the Pi
+CPU while the Orange Pi network is unavailable. The deterministic checks cover
+private-address denial and secret-free receipts; the live MINFILE probe returned
+bounded source text without contacting a private rig address.
 
 ## Next comparisons to keep this document honest
 
