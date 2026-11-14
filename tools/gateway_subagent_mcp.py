@@ -12,10 +12,15 @@ from gateway_subagent import run_child
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--parent-route', default=os.environ.get('SUBAGENT_PARENT_ROUTE'))
+parser.add_argument('--cloud-parent', action='store_true', help='Codex dashboard parent; delegate only to local rigs')
 parser.add_argument('--receipt-dir', default=os.environ.get('SUBAGENT_RECEIPT_DIR'))
 config = parser.parse_args()
+if config.cloud_parent:
+    if config.parent_route:
+        parser.error('--cloud-parent and --parent-route cannot be combined')
+    config.parent_route = 'cloud/codex'
 if not config.parent_route or not config.receipt_dir:
-    parser.error('--parent-route and --receipt-dir are required (or set SUBAGENT_PARENT_ROUTE and SUBAGENT_RECEIPT_DIR)')
+    parser.error('--parent-route or --cloud-parent, and --receipt-dir are required')
 
 TOOL = {'name': 'delegate_task',
         'description': 'Give one bounded task to a separate child agent. The default local route is prepared by the manager; candidate_id may select a shared 35B chat or a Codex Terra/Luna worker. The child cannot delegate further. Verify its answer before relying on it.',
@@ -24,6 +29,12 @@ TOOL = {'name': 'delegate_task',
             'task': {'type': 'string', 'minLength': 1, 'maxLength': 4000},
             'candidate_id': {'type': 'string', 'enum': ['qwen35_shared_1060', 'codex_terra', 'codex_luna']}},
             'required': ['agent_type', 'task'], 'additionalProperties': False}}
+if config.cloud_parent:
+    TOOL['name'] = 'delegate_local_task'
+    TOOL['description'] = ('Give one bounded coding or research task to a local GPU agent. '
+                           'The gateway chooses its model and GPUs. The child has no file tools; '
+                           'use it for analysis or review and verify its answer.')
+    del TOOL['inputSchema']['properties']['candidate_id']
 
 
 def respond(id, result):
@@ -53,10 +64,11 @@ def handle(packet):
         task = arguments.get('task')
         agent_type = arguments.get('agent_type')
         candidate_id = arguments.get('candidate_id')
-        if (params.get('name') != 'delegate_task' or agent_type not in ('coding', 'research')
+        if (params.get('name') != TOOL['name'] or agent_type not in ('coding', 'research')
                 or not isinstance(task, str) or not 1 <= len(task) <= 4000
-                or candidate_id not in (None, 'qwen35_shared_1060', 'codex_terra', 'codex_luna')
-                or set(arguments) - {'agent_type', 'task', 'candidate_id'}):
+                or candidate_id not in ((None,) if config.cloud_parent else
+                                        (None, 'qwen35_shared_1060', 'codex_terra', 'codex_luna'))
+                or set(arguments) - set(TOOL['inputSchema']['properties'])):
             respond(id, {'isError': True, 'content': [{'type': 'text', 'text': 'invalid delegate_task arguments'}]})
             return
         try:

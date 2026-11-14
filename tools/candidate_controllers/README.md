@@ -21,4 +21,10 @@ The current short-chat, six-server MCP, live-search, and two-tool research runne
 
 The subagent adapter is `tools/gateway_subagent_mcp.py`, backed by `tools/gateway_subagent.py`. Its model-facing tool accepts `agent_type` (`coding` or `research`) and `task`; the controller supplies the parent route and receipt directory when launching the MCP server. The gateway manager decides which model and GPU to prepare and returns a ready route. The adapter runs a separate native child process with no delegation tool and keeps a per-child receipt. The direct parent MCP smoke is `tools/gateway_subagent_smoke.py`.
 
+For a Codex dashboard cloud parent, launch the same adapter with `--cloud-parent --receipt-dir DIR`.
+It advertises `delegate_local_task` with only `agent_type` and `task`, then requests a local route
+from the gateway using `parent_route: cloud/codex`. The child still has no file tools. The dashboard
+registers this server through its optional Codex app-server MCP configuration; a live round trip
+remains to be verified after deployment.
+
 For isolated harnesses, pass `--parent-route` and `--receipt-dir` in the MCP server launch command. This avoids dependence on how each harness forwards its process environment; the environment variables above remain available for direct use. The matched one-child comparison is `python3 tools/comparison_subagents.py CANDIDATE --run-id ID`, followed by `python3 tools/comparison_subagents.py summary --run-id ID` after all six candidates. The shared fixture is `tools/fixtures/subagent_mcp.py`, and the combined receipt is `results/ID/subagents/matrix.json`. Each candidate uses its own controller and a fresh result directory; a direct child baseline must pass before that candidate's native run.

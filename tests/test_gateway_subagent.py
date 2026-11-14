@@ -1,4 +1,5 @@
 import json
+import io
 import sys
 from pathlib import Path
 import subprocess
@@ -37,6 +38,51 @@ class GatewaySubagentRequest(unittest.TestCase):
             'parent_route': 'gpu-rig/chat-27b', 'agent_type': 'coding'})
         self.assertEqual(result['route'], 'gpu-rig/coder-7b')
 
+    def test_cloud_parent_requests_local_child_by_capability(self):
+        class Reply:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                pass
+            def read(self):
+                return b'{"route":"gpu-rig/coder-7b","gpu_ids":[2]}'
+
+        with patch('gateway_subagent.urlopen', return_value=Reply()) as call:
+            resolve_child('http://127.0.0.1:8080', 'cloud/codex', 'coding')
+        self.assertEqual(json.loads(call.call_args.args[0].data), {
+            'parent_route': 'cloud/codex', 'agent_type': 'coding'})
+
+    def test_cloud_parent_child_receipt_does_not_require_local_parent_roster(self):
+        child = {'route': 'gpu-rig/coder-7b', 'gpu_ids': [2],
+                 'model': 'qwen2.5-coder:7b', 'context_length': 8192}
+        ready = {'id': child['route'], 'gpu_ids': [2], 'model': child['model']}
+        class Process:
+            returncode = 0
+            stdin = io.StringIO()
+            stdout = io.StringIO(''.join(json.dumps(row) + '\n' for row in [
+                {'type': 'message_end', 'message': {'role': 'assistant',
+                 'content': [{'type': 'text', 'text': 'Review complete'}]}},
+                {'type': 'agent_settled'},
+            ]))
+            def poll(self):
+                return 0
+
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('gateway_subagent.fetch_ready_roster', side_effect=[
+                 {'data': []}, {'data': [ready]}, {'data': [ready]}]), \
+             patch('gateway_subagent.resolve_child', return_value=child), \
+             patch('gateway_subagent.BASE_MODEL', Path(__file__).resolve().parents[1] /
+                   'tools/comparison_fixtures/pi_models.json'), \
+             patch('gateway_subagent.BASE_SETTINGS', Path(__file__).resolve().parents[1] /
+                   'tools/comparison_fixtures/pi_settings.json'), \
+             patch('gateway_subagent.subprocess.Popen', return_value=Process()):
+            receipt = run_child(parent_id='cloud/codex', agent_type='coding',
+                                prompt='Review this design', out=Path(temp) / 'child',
+                                gateway='http://127.0.0.1:8080')
+        self.assertTrue(receipt['roster_stable'])
+        self.assertEqual(receipt['parent_gpu_ids'], [])
+        self.assertEqual(receipt['answer'], 'Review complete')
+
     def test_ephemeral_child_is_released_when_post_attach_roster_fails(self):
         parent = {'id': 'gpu-rig/shared-35b-main', 'model': 'qwen3.6:35b-a3b-xl',
                   'state': 'ready', 'context_length': 262144, 'gpu_ids': [0]}
@@ -66,6 +112,18 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertEqual(set(tools[0]['inputSchema']['properties']), {'agent_type', 'task', 'candidate_id'})
         self.assertEqual(tools[0]['inputSchema']['properties']['agent_type']['enum'],
                          ['coding', 'research'])
+
+    def test_cloud_parent_mcp_exposes_local_only_tool(self):
+        server = Path(__file__).resolve().parents[1] / 'tools/gateway_subagent_mcp.py'
+        with tempfile.TemporaryDirectory() as temp:
+            packet = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}) + '\n'
+            proc = subprocess.run([sys.executable, str(server), '--cloud-parent',
+                                   '--receipt-dir', temp], input=packet, text=True,
+                                  capture_output=True, timeout=5)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        tool = json.loads(proc.stdout)['result']['tools'][0]
+        self.assertEqual(tool['name'], 'delegate_local_task')
+        self.assertEqual(set(tool['inputSchema']['properties']), {'agent_type', 'task'})
 
 
 if __name__ == '__main__':

@@ -71,6 +71,8 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
     out = out.resolve()
     if out.exists():
         raise FileExistsError(out)
+    if parent_id == 'cloud/codex' and candidate_id is not None:
+        raise ValueError('a cloud parent may request only a local child')
     selected = fetch_ready_roster(gateway, os.environ.get('LLM_GATEWAY_API_KEY'))
     if candidate_id in ('codex_terra', 'codex_luna'):
         parent = next((row for row in selected['data'] if row['id'] == parent_id), None)
@@ -90,7 +92,8 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
         selected = fetch_ready_roster(gateway, os.environ.get('LLM_GATEWAY_API_KEY'))
         by_id = {row['id']: row for row in selected['data']}
         parent = by_id.get(parent_id)
-        if not parent or by_id.get(child['route'], {}).get('gpu_ids') != child['gpu_ids']:
+        if (parent_id != 'cloud/codex' and not parent) or \
+                by_id.get(child['route'], {}).get('gpu_ids') != child['gpu_ids']:
             raise ValueError('manager selection differs from ready roster')
         out.mkdir(parents=True)
         agent = out / 'agent'
@@ -157,9 +160,10 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
         exit_code = proc.returncode
         after = fetch_ready_roster(gateway, os.environ.get('LLM_GATEWAY_API_KEY'))
         after_rows = {row['id']: row for row in after['data']}
-        stable = (after_rows.get(parent['id']) == parent and
+        stable = ((parent_id == 'cloud/codex' or after_rows.get(parent['id']) == parent) and
                   after_rows.get(child['route']) == by_id[child['route']])
-        receipt = {'agent_type': agent_type, 'parent_route': parent_id, 'parent_gpu_ids': parent['gpu_ids'],
+        receipt = {'agent_type': agent_type, 'parent_route': parent_id,
+                   'parent_gpu_ids': [] if parent_id == 'cloud/codex' else parent['gpu_ids'],
                    'child_route': child['route'], 'child_gpu_ids': child['gpu_ids'],
                    'child_model': child['model'], 'child_context': child['context_length'],
                    'max_tokens': max_tokens, 'timeout_s': timeout_s,
