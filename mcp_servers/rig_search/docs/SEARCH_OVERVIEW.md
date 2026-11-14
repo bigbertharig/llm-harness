@@ -99,6 +99,33 @@ fallback, and local request caps. It does not yet implement query planning,
 relevance scoring, CPU page dispatch, or page verification. `ingest.py` can
 accept a cloud model's search hits as explicit candidates.
 
+## Harness and gateway safety boundary
+
+`rig-search` is a harness-side MCP tool. The gateway may relay a harness
+session, but it should not expose the search process, keys, or `.env` as a
+public or tailnet HTTP service. Register `search_web` only for sessions whose
+tool capability includes web discovery. The tool's read-only MCP hint does
+not mean private data stays local: every query reaches SearXNG's configured
+engines, and direct providers send the query to their own APIs.
+
+Direct DuckDuckGo and paid provider calls now require the server-side
+`RIG_SEARCH_ALLOW_DIRECT_EGRESS=1` setting in addition to a configured
+provider, key, and positive cap where applicable. It defaults to off. Set it
+only in a trusted, budgeted profile; a model cannot enable it through tool
+arguments. Use `--providers searxng` for the first general-session rollout.
+Do not treat provider selection as permission to send a secret or a full
+private prompt to the web. Keep query construction short and public-safe in
+the harness policy. The MCP receipt records call order, provider attempts,
+counts, and health without copying queries or result URLs.
+
+Search results exclude private IP literals, localhost names, and URL user
+info. They are still untrusted content. A page reader must independently
+enforce its own URL, DNS, redirect, response-size, and destination policy;
+`search_web` does not authorize fetching an arbitrary returned URL. Keep
+fetch and search capabilities separate. Before enabling remote sessions,
+verify denied direct-provider calls, bounded budgets, secret-free receipts,
+and a query that cannot make the reader contact a private rig address.
+
 ## Next comparisons to keep this document honest
 
 - Replay the same person, organization, publication, event, and old

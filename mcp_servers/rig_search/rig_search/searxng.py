@@ -1,6 +1,7 @@
 """SearXNG JSON provider; independent of harness and orchestration."""
 
 import json
+import ipaddress
 import socket
 import time
 from urllib.error import HTTPError, URLError
@@ -22,7 +23,18 @@ def url_key(value):
         parts = urlsplit(value)
         if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
             return None
+        if parts.username or parts.password:
+            return None
         host = parts.hostname.lower()
+        if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
+            return None
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            pass
+        else:
+            if not address.is_global:
+                return None
         port = parts.port
         if port and not ((parts.scheme.lower(), port) in (("http", 80), ("https", 443))):
             host += f":{port}"

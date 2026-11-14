@@ -10,6 +10,7 @@ from . import duckduckgo, providers, searxng
 
 
 PROVIDER_NAMES = ("searxng", "duckduckgo", "tavily", "exa", "firecrawl", "serpapi")
+DIRECT_PROVIDERS = frozenset(PROVIDER_NAMES) - {"searxng"}
 KEY_ENV = {"tavily": "TAVILY_API_KEY", "exa": "EXA_API_KEY",
            "firecrawl": "FIRECRAWL_API_KEY", "serpapi": "SERPAPI_API_KEY"}
 
@@ -101,6 +102,7 @@ def search(query, max_results, endpoint=None, *, env=None, state=None, min_resul
     """
     env = os.environ if env is None else env
     names = _configured(env)
+    direct_egress = env.get("RIG_SEARCH_ALLOW_DIRECT_EGRESS", "0") == "1"
     if provider is not None:
         if provider not in names:
             raise ValueError("provider is not enabled in RIG_SEARCH_PROVIDERS")
@@ -125,6 +127,9 @@ def search(query, max_results, endpoint=None, *, env=None, state=None, min_resul
     any_error = False
     last_data = None
     for name in ordered:
+        if name in DIRECT_PROVIDERS and not direct_egress:
+            attempts.append({"provider": name, "status": "direct_egress_disabled"})
+            continue
         key = env.get(KEY_ENV[name], "") if name in KEY_ENV else ""
         if name == "searxng" and not endpoint:
             attempts.append({"provider": name, "status": "unconfigured"})

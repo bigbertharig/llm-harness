@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from tempfile import TemporaryDirectory
 from threading import Thread
 import unittest
 from unittest.mock import patch
@@ -82,6 +83,15 @@ class SearchContract(unittest.TestCase):
         self.assertEqual(data["results"][0]["engines"], ["brave", "duckduckgo"])
         self.assertEqual(data["results"][0]["published_at"], "2026-11-01T00:00:00Z")
 
+    def test_discovery_urls_exclude_private_hosts_and_credentials(self):
+        for url in ("http://127.0.0.1/admin", "http://10.0.0.3/",
+                    "http://localhost/", "http://host.local/",
+                    "https://user:secret@example.org/path", "http://[::1]/"):
+            with self.subTest(url=url):
+                self.assertIsNone(tool.url_key(url))
+        self.assertEqual(tool.url_key("https://example.org/a#part"),
+                         "https://example.org/a")
+
     def test_degraded_search_and_query_hints(self):
         data = tool.search("degraded search", 5, self.endpoint)
         self.assertTrue(data["degraded"])
@@ -143,6 +153,25 @@ class SearchContract(unittest.TestCase):
         self.assertEqual(replies[2]["result"]["structuredContent"]["result_count"], 2)
         self.assertFalse(replies[2]["result"]["isError"])
         self.assertTrue(replies[3]["result"]["isError"])
+
+    def test_mcp_receipt_omits_query_and_urls(self):
+        with TemporaryDirectory() as temp:
+            receipt = Path(temp) / "search.jsonl"
+            message = {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                       "params": {"name": "search_web", "arguments": {
+                           "query": "private project name", "max_results": 2}}}
+            proc = subprocess.run(
+                [sys.executable, str(Path(__file__).resolve().parents[1] / "mcp_server.py"),
+                 str(receipt)], input=json.dumps(message) + "\n", text=True,
+                capture_output=True, timeout=8,
+                env={**os.environ, "SEARXNG_URL": self.endpoint,
+                     "RIG_SEARCH_PROVIDERS": "searxng"})
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            record = receipt.read_text()
+            self.assertNotIn("private project name", record)
+            self.assertNotIn("https://example.org", record)
+            self.assertEqual([row["call_index"] for row in map(json.loads, record.splitlines())],
+                             [1, 1])
 
 
 if __name__ == "__main__":

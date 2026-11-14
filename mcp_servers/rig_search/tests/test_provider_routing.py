@@ -89,9 +89,23 @@ class AdapterTests(unittest.TestCase):
 
 
 class RoutingTests(unittest.TestCase):
+    def test_direct_egress_requires_server_setting(self):
+        with TemporaryDirectory() as temp:
+            calls = []
+            env = {"RIG_SEARCH_PROVIDERS": "exa", "EXA_API_KEY": "secret",
+                   "RIG_SEARCH_MONTHLY_CAP_EXA": "1"}
+            result = router.search("research query", 5, env=env,
+                                   state=router.BudgetState(Path(temp) / "state.sqlite3"),
+                                   searchers={"exa": lambda *_: calls.append("exa") or data(None)},
+                                   provider="exa")
+            self.assertEqual(calls, [])
+            self.assertEqual(result["attempts"],
+                             [{"provider": "exa", "status": "direct_egress_disabled"}])
+            self.assertEqual(result["result_count"], 0)
+
     def test_free_duckduckgo_cools_and_falls_back(self):
         with TemporaryDirectory() as temp:
-            env = {"RIG_SEARCH_PROVIDERS": "duckduckgo,searxng",
+            env = {"RIG_SEARCH_ALLOW_DIRECT_EGRESS": "1", "RIG_SEARCH_PROVIDERS": "duckduckgo,searxng",
                    "SEARXNG_URL": "http://local"}
             state = router.BudgetState(Path(temp) / "state.sqlite3")
             calls = []
@@ -112,7 +126,7 @@ class RoutingTests(unittest.TestCase):
 
     def test_specific_provider_does_not_rotate_or_fall_back(self):
         with TemporaryDirectory() as temp:
-            env = {"RIG_SEARCH_PROVIDERS": "searxng,exa", "SEARXNG_URL": "http://local",
+            env = {"RIG_SEARCH_ALLOW_DIRECT_EGRESS": "1", "RIG_SEARCH_PROVIDERS": "searxng,exa", "SEARXNG_URL": "http://local",
                    "EXA_API_KEY": "secret", "RIG_SEARCH_MONTHLY_CAP_EXA": "1",
                    "RIG_SEARCH_ROUTING_MODE": "rotate"}
             state = router.BudgetState(Path(temp) / "state.sqlite3")
@@ -134,7 +148,7 @@ class RoutingTests(unittest.TestCase):
 
     def test_rotates_and_reserves_paid_budget_across_calls(self):
         with TemporaryDirectory() as temp:
-            env = {"RIG_SEARCH_PROVIDERS": "tavily,exa",
+            env = {"RIG_SEARCH_ALLOW_DIRECT_EGRESS": "1", "RIG_SEARCH_PROVIDERS": "tavily,exa",
                    "RIG_SEARCH_ROUTING_MODE": "rotate",
                    "TAVILY_API_KEY": "t-secret", "EXA_API_KEY": "e-secret",
                    "RIG_SEARCH_MONTHLY_CAP_TAVILY": "2",
@@ -163,8 +177,8 @@ class RoutingTests(unittest.TestCase):
 
     def test_paid_provider_requires_both_key_and_positive_cap(self):
         cases = (
-            {"RIG_SEARCH_PROVIDERS": "tavily", "TAVILY_API_KEY": "secret"},
-            {"RIG_SEARCH_PROVIDERS": "tavily", "RIG_SEARCH_MONTHLY_CAP_TAVILY": "1"},
+            {"RIG_SEARCH_ALLOW_DIRECT_EGRESS": "1", "RIG_SEARCH_PROVIDERS": "tavily", "TAVILY_API_KEY": "secret"},
+            {"RIG_SEARCH_ALLOW_DIRECT_EGRESS": "1", "RIG_SEARCH_PROVIDERS": "tavily", "RIG_SEARCH_MONTHLY_CAP_TAVILY": "1"},
         )
         for env in cases:
             with self.subTest(env=env):
@@ -175,7 +189,7 @@ class RoutingTests(unittest.TestCase):
 
     def test_fallback_mode_keeps_first_healthy_provider(self):
         with TemporaryDirectory() as temp:
-            env = {"RIG_SEARCH_PROVIDERS": "searxng,tavily",
+            env = {"RIG_SEARCH_ALLOW_DIRECT_EGRESS": "1", "RIG_SEARCH_PROVIDERS": "searxng,tavily",
                    "SEARXNG_URL": "http://local", "TAVILY_API_KEY": "secret",
                    "RIG_SEARCH_MONTHLY_CAP_TAVILY": "2"}
             state = router.BudgetState(Path(temp) / "state.sqlite3")
@@ -191,7 +205,7 @@ class RoutingTests(unittest.TestCase):
 
     def test_exhausted_budget_falls_back_without_extra_paid_call(self):
         with TemporaryDirectory() as temp:
-            env = {"RIG_SEARCH_PROVIDERS": "tavily,searxng", "TAVILY_API_KEY": "secret",
+            env = {"RIG_SEARCH_ALLOW_DIRECT_EGRESS": "1", "RIG_SEARCH_PROVIDERS": "tavily,searxng", "TAVILY_API_KEY": "secret",
                    "RIG_SEARCH_MONTHLY_CAP_TAVILY": "1", "SEARXNG_URL": "http://local"}
             state = router.BudgetState(Path(temp) / "state.sqlite3")
             calls = []
@@ -207,7 +221,7 @@ class RoutingTests(unittest.TestCase):
 
     def test_rate_limit_cools_provider_and_uses_fallback(self):
         with TemporaryDirectory() as temp:
-            env = {"RIG_SEARCH_PROVIDERS": "tavily,searxng", "TAVILY_API_KEY": "secret",
+            env = {"RIG_SEARCH_ALLOW_DIRECT_EGRESS": "1", "RIG_SEARCH_PROVIDERS": "tavily,searxng", "TAVILY_API_KEY": "secret",
                    "RIG_SEARCH_MONTHLY_CAP_TAVILY": "5", "SEARXNG_URL": "http://local"}
             state = router.BudgetState(Path(temp) / "state.sqlite3")
             calls = []
@@ -230,7 +244,7 @@ class RoutingTests(unittest.TestCase):
 
     def test_partial_results_merge_and_deduplicate(self):
         with TemporaryDirectory() as temp:
-            env = {"RIG_SEARCH_PROVIDERS": "searxng,tavily", "TAVILY_API_KEY": "secret",
+            env = {"RIG_SEARCH_ALLOW_DIRECT_EGRESS": "1", "RIG_SEARCH_PROVIDERS": "searxng,tavily", "TAVILY_API_KEY": "secret",
                    "RIG_SEARCH_MONTHLY_CAP_TAVILY": "1", "SEARXNG_URL": "http://local"}
             state = router.BudgetState(Path(temp) / "state.sqlite3")
             partial = data("https://example.org/a")
