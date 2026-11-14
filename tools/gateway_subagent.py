@@ -71,7 +71,7 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
     out = out.resolve()
     if out.exists():
         raise FileExistsError(out)
-    if parent_id == 'cloud/codex' and candidate_id is not None:
+    if parent_id == 'cloud/codex' and candidate_id not in (None, 'qwen35_shared_1060'):
         raise ValueError('a cloud parent may request only a local child')
     selected = fetch_ready_roster(gateway, os.environ.get('LLM_GATEWAY_API_KEY'))
     if candidate_id in ('codex_terra', 'codex_luna'):

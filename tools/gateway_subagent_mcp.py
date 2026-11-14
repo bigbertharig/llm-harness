@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sys
+from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from gateway_subagent import run_child
@@ -32,9 +33,15 @@ TOOL = {'name': 'delegate_task',
 if config.cloud_parent:
     TOOL['name'] = 'delegate_local_task'
     TOOL['description'] = ('Give one bounded coding or research task to a local GPU agent. '
-                           'The gateway chooses its model and GPUs. The child has no file tools; '
-                           'use it for analysis or review and verify its answer.')
-    del TOOL['inputSchema']['properties']['candidate_id']
+                           'Set candidate_id to qwen35_shared_1060 for an independent chat in the shared 35B model; '
+                           'otherwise the manager selects a local model. The manager chooses GPUs. '
+                           'The child has no file tools; verify its answer.')
+    TOOL['inputSchema']['properties']['candidate_id']['enum'] = ['qwen35_shared_1060']
+
+LIST_TOOL = {'name': 'list_local_agents',
+             'description': 'List local research and coding agents and optional model candidates. '
+                            'Use this when choosing local helpers for a task.',
+             'inputSchema': {'type': 'object', 'properties': {}, 'additionalProperties': False}}
 
 
 def respond(id, result):
@@ -51,7 +58,7 @@ def handle(packet):
     elif method == 'ping':
         respond(id, {})
     elif method == 'tools/list':
-        respond(id, {'tools': [TOOL]})
+        respond(id, {'tools': ([LIST_TOOL, TOOL] if config.cloud_parent else [TOOL])})
     elif method == 'tools/call':
         params = packet.get('params') or {}
         if not isinstance(params, dict):
@@ -61,12 +68,29 @@ def handle(packet):
         if not isinstance(arguments, dict):
             respond(id, {'isError': True, 'content': [{'type': 'text', 'text': 'invalid delegate_task arguments'}]})
             return
+        if config.cloud_parent and params.get('name') == LIST_TOOL['name']:
+            if arguments:
+                respond(id, {'isError': True, 'content': [{'type': 'text', 'text': 'list_local_agents takes no arguments'}]})
+                return
+            try:
+                headers = {}
+                if os.environ.get('LLM_GATEWAY_API_KEY'):
+                    headers['Authorization'] = 'Bearer ' + os.environ['LLM_GATEWAY_API_KEY']
+                request = Request('http://127.0.0.1:8080/v1/manager/local-agent-capabilities',
+                                  headers=headers)
+                with urlopen(request, timeout=30) as response:
+                    catalog = json.load(response)
+                respond(id, {'content': [{'type': 'text', 'text': json.dumps(catalog)}],
+                             'structuredContent': catalog})
+            except Exception as exc:
+                respond(id, {'isError': True, 'content': [{'type': 'text', 'text': f'{type(exc).__name__}: {exc}'}]})
+            return
         task = arguments.get('task')
         agent_type = arguments.get('agent_type')
         candidate_id = arguments.get('candidate_id')
         if (params.get('name') != TOOL['name'] or agent_type not in ('coding', 'research')
                 or not isinstance(task, str) or not 1 <= len(task) <= 4000
-                or candidate_id not in ((None,) if config.cloud_parent else
+                or candidate_id not in ((None, 'qwen35_shared_1060') if config.cloud_parent else
                                         (None, 'qwen35_shared_1060', 'codex_terra', 'codex_luna'))
                 or set(arguments) - set(TOOL['inputSchema']['properties'])):
             respond(id, {'isError': True, 'content': [{'type': 'text', 'text': 'invalid delegate_task arguments'}]})

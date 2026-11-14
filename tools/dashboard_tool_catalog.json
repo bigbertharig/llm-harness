@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "servers": {
+    "local_agents": {
+      "purpose": "Discover local agent roles and delegate bounded tasks to a rig model",
+      "tools": [
+        {"name": "list_local_agents", "approval": "automatic"},
+        {"name": "delegate_local_task", "approval": "automatic"}
+      ]
+    },
+    "rig_search": {
+      "purpose": "Search public sources and fetch selected public pages on Pi CPUs",
+      "tools": [
+        {"name": "search_web", "approval": "automatic"},
+        {"name": "fetch_page", "approval": "automatic"}
+      ]
+    }
+  }
+}

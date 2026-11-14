@@ -52,6 +52,22 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertEqual(json.loads(call.call_args.args[0].data), {
             'parent_route': 'cloud/codex', 'agent_type': 'coding'})
 
+    def test_cloud_parent_can_request_shared_35b_without_gpu_selection(self):
+        class Reply:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                pass
+            def read(self):
+                return b'{"route":"gpu-rig/shared-35b-child-test","gpu_ids":[3]}'
+
+        with patch('gateway_subagent.urlopen', return_value=Reply()) as call:
+            resolve_child('http://127.0.0.1:8080', 'cloud/codex', 'research',
+                          'qwen35_shared_1060')
+        self.assertEqual(json.loads(call.call_args.args[0].data), {
+            'parent_route': 'cloud/codex', 'agent_type': 'research',
+            'candidate_id': 'qwen35_shared_1060'})
+
     def test_cloud_parent_child_receipt_does_not_require_local_parent_roster(self):
         child = {'route': 'gpu-rig/coder-7b', 'gpu_ids': [2],
                  'model': 'qwen2.5-coder:7b', 'context_length': 8192}
@@ -121,9 +137,14 @@ class GatewaySubagentRequest(unittest.TestCase):
                                    '--receipt-dir', temp], input=packet, text=True,
                                   capture_output=True, timeout=5)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        tool = json.loads(proc.stdout)['result']['tools'][0]
+        tools = json.loads(proc.stdout)['result']['tools']
+        self.assertEqual([row['name'] for row in tools],
+                         ['list_local_agents', 'delegate_local_task'])
+        tool = tools[1]
         self.assertEqual(tool['name'], 'delegate_local_task')
-        self.assertEqual(set(tool['inputSchema']['properties']), {'agent_type', 'task'})
+        self.assertEqual(set(tool['inputSchema']['properties']), {'agent_type', 'task', 'candidate_id'})
+        self.assertEqual(tool['inputSchema']['properties']['candidate_id']['enum'],
+                         ['qwen35_shared_1060'])
 
 
 if __name__ == '__main__':
