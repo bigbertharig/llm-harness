@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "scope": "Agent-callable MCP tools found in harness code and the 2026-10-29 through 2026-11-14 comparison receipts",
+  "surfaces": {
+    "rig_search": {
+      "owner": "llm-harness",
+      "status": "dashboard",
+      "implementation": "mcp_servers/rig_search/mcp_server.py",
+      "purpose": "Search public sources and fetch selected public pages on Pi CPUs",
+      "tools": [
+        {"name": "search_web", "approval": "automatic"},
+        {"name": "fetch_page", "approval": "automatic"}
+      ],
+      "backends": ["searxng", "duckduckgo", "tavily", "exa", "firecrawl", "serpapi"]
+    },
+    "local_agents": {
+      "owner": "llm-harness",
+      "status": "dashboard",
+      "implementation": "tools/gateway_subagent_mcp.py --cloud-parent",
+      "purpose": "Discover local agent roles and delegate bounded tasks to a rig model",
+      "tools": [
+        {"name": "list_local_agents", "approval": "automatic"},
+        {"name": "delegate_local_task", "approval": "automatic"}
+      ]
+    },
+    "local_parent_agents": {
+      "owner": "llm-harness",
+      "status": "harness_runtime",
+      "implementation": "tools/gateway_subagent_mcp.py --parent-route",
+      "purpose": "Local parent to managed child delegation",
+      "tools": [{"name": "delegate_task"}]
+    },
+    "legacy_searxng": {
+      "owner": "llm-harness",
+      "status": "comparison_adapter",
+      "implementation": "mcp_servers/searxng/server.py",
+      "purpose": "Earlier single-backend SearXNG search adapter",
+      "tools": [{"name": "search_web"}]
+    },
+    "legacy_web_search": {
+      "owner": "llm-harness",
+      "status": "comparison_adapter",
+      "implementation": "tools/local_mcp_web_search.py",
+      "purpose": "Earlier DuckDuckGo search adapter for harness comparisons",
+      "tools": [{"name": "search_web"}]
+    },
+    "local_rag_fixture": {
+      "owner": "llm-harness",
+      "status": "test_fixture",
+      "implementation": "tools/fixtures/local_rag_mcp.py",
+      "purpose": "Search an isolated Chroma passage corpus with source filters and citation IDs",
+      "tools": [{"name": "search_passages"}]
+    },
+    "marker_fixture": {
+      "owner": "llm-harness",
+      "status": "test_fixture",
+      "implementation": "tools/fixtures/local_mcp_marker.mjs",
+      "purpose": "Verify native text and structured MCP tool results",
+      "tools": [{"name": "read_marker"}, {"name": "read_structured_marker"}]
+    },
+    "numeric_fixture": {
+      "owner": "llm-harness",
+      "status": "test_fixture",
+      "implementation": "tools/fixtures/local_mcp_matrix.mjs numeric",
+      "purpose": "Check required numeric arguments and text plus structured results",
+      "tools": [{"name": "calculate_sum"}, {"name": "calculate_product"}]
+    },
+    "lookup_fixture": {
+      "owner": "llm-harness",
+      "status": "test_fixture",
+      "implementation": "tools/fixtures/local_mcp_matrix.mjs lookup",
+      "purpose": "Check required lookup arguments and nested structured-only results",
+      "tools": [{"name": "get_entry"}, {"name": "get_nested_entry"}]
+    },
+    "web_research_fixture": {
+      "owner": "llm-harness",
+      "status": "test_fixture",
+      "implementation": "tools/fixtures/web_research_mcp.py",
+      "purpose": "Frozen search to CPU scrape to cited answer comparison",
+      "tools": [{"name": "search_web"}, {"name": "fetch_page"}]
+    },
+    "subagent_fixture": {
+      "owner": "llm-harness",
+      "status": "test_fixture",
+      "implementation": "tools/fixtures/subagent_mcp.py",
+      "purpose": "Frozen delegation comparison",
+      "tools": [{"name": "delegate_task"}]
+    },
+    "daedalmap_research": {
+      "owner": "county-map",
+      "status": "external_tested_2026_11_02",
+      "implementation": "tools/research-mcp via tools/mcp-runtime/server.py",
+      "purpose": "Search installed source packs and ask questions bound to their sources",
+      "tools": [{"name": "get_tool_help"}, {"name": "how_research_mcp_works"}, {"name": "where_is_research_data"}, {"name": "get_catalog"}, {"name": "resolve_research_geography"}, {"name": "search_research_sources"}, {"name": "resolve_research_corpus_intent"}, {"name": "get_research_pack"}, {"name": "ask_research_sources"}, {"name": "query_research_source_data"}]
+    },
+    "daedalmap_geometry": {
+      "owner": "county-map",
+      "status": "external_tested_2026_11_02",
+      "implementation": "tools/geometry-mcp via tools/mcp-runtime/server.py",
+      "purpose": "Resolve and compare installed geography and retrieve selected shapes",
+      "tools": [{"name": "get_tool_help"}, {"name": "get_catalog"}, {"name": "get_pack"}, {"name": "get_geography"}, {"name": "resolve_point"}, {"name": "resolve_deep_point"}, {"name": "get_loc_id_info"}, {"name": "identify_dataset_geography"}, {"name": "identify_reference_system"}, {"name": "convert_reference"}, {"name": "compare_geographies"}, {"name": "get_shape"}]
+    },
+    "deepwiki": {
+      "owner": "external MCP service",
+      "status": "external_tested_2026_11_02",
+      "implementation": "https://mcp.deepwiki.com/mcp",
+      "purpose": "Repository wiki lookup",
+      "tools": [{"name": "read_wiki_structure"}]
+    },
+    "openai_docs": {
+      "owner": "external MCP service",
+      "status": "external_tested_2026_11_02",
+      "implementation": "https://developers.openai.com/mcp",
+      "purpose": "OpenAI documentation search",
+      "tools": [{"name": "search_openai_docs"}]
+    },
+    "cloudflare_docs": {
+      "owner": "external MCP service",
+      "status": "external_tested_2026_11_02",
+      "implementation": "https://docs.mcp.cloudflare.com/mcp",
+      "purpose": "Cloudflare documentation search",
+      "tools": [{"name": "search_cloudflare_documentation"}]
+    }
+  }
+}
