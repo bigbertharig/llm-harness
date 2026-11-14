@@ -1,5 +1,8 @@
 # Harness search replacement readiness, 2026-11-13
 
+For the combined evidence and lessons from the research assistant, see
+[Search: evidence and lessons](SEARCH_OVERVIEW.md).
+
 ## What each provider is useful for
 
 The four matched live queries are documented in
@@ -65,8 +68,9 @@ with `RIG_SEARCH_COMPARE_PROVIDERS` and explicit account budget review. The
 private `.env` caps are now Tavily 8, Exa 8, Firecrawl 8, and SerpApi 12
 requests per UTC month. The earlier trial used four requests each for Tavily,
 Exa, and Firecrawl, and eight for SerpApi. One later explicit MCP call to each
-paid provider succeeded. Current recorded use is therefore 5, 5, 5, and 9
-requests respectively, still below 5% of every published free allowance.
+paid provider succeeded. The Bryan Hellard comparison used one more call to
+each. Current recorded use is therefore 6, 6, 6, and 10 requests
+respectively, still below 5% of every published free allowance.
 These local counters do not include calls from other clients.
 Each named-provider call returned exactly one matching provider attempt and
 three URLs. Tavily, Exa, and Firecrawl put the Python documentation first.

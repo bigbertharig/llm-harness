@@ -7,6 +7,10 @@ one `search_web` contract. Projects retain their own query strategy, ranking,
 page selection, and acceptance rules. The core uses the Python standard
 library; the direct DuckDuckGo adapter optionally uses `ddgs`.
 
+Start with [Search: evidence and lessons](docs/SEARCH_OVERVIEW.md) for the
+cross-provider results, old research-assistant findings, and next evaluation
+steps. The dated documents in `docs/` keep the detailed trial evidence.
+
 Entry points:
 
 - `mcp_server.py`: stdio MCP server for the harness and research shoulder.
