@@ -8,6 +8,8 @@ One operator can start an agent session on the Pi, leave it running, reconnect f
 
 This extends the existing `README.md` and `docs/research/harness_mode_contract_2026-10-26.md` boundaries. It does not depend on a public network endpoint. First test on the Pi and local network; private access from elsewhere is a later gateway/network milestone.
 
+The Pi's host ingress firewall and key-only SSH were deployed on 2026-11-13, but Tailscale remains disabled and unauthenticated. The future harness session service must bind only to loopback or a private Unix socket. Tailscale Serve should expose a narrow gateway session front door after restrictive tailnet grants are tested; it must not expose the administrative dashboard, manager API, or harness backend. The host firewall drops forwarding, so the rig does not become a tailnet subnet route. A Codex command sandbox does not enforce network policy for host-side MCP processes: each harness tool needs its own server-side capability check and destination policy before remote general-agent work is enabled. See the gateway companion design for the current host rule and activation gate.
+
 ## Session behavior
 
 - Give each session a stable opaque ID, creation time, owner (one operator initially), selected offered route/role, state, and monotonic event sequence. Persist messages, tool calls/results, approvals, compaction checkpoints, child session links, and terminal outcome in an append-only record. Keep credentials and raw secrets out of records and event payloads.
