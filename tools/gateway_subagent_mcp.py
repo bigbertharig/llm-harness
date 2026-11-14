@@ -76,7 +76,8 @@ def handle(packet):
             root = Path(config.receipt_dir)
             receipt = run_child(parent_id=parent, agent_type=agent_type, prompt=task,
                                 out=root / uuid4().hex,
-                                gateway=os.environ.get('SUBAGENT_GATEWAY', 'http://127.0.0.1:8080'),
+                                gateway=('http://127.0.0.1:8080' if config.cloud_parent else
+                                         os.environ.get('SUBAGENT_GATEWAY', 'http://127.0.0.1:8080')),
                                 candidate_id=candidate_id)
             ok = receipt['exit_code'] == 0 and receipt['roster_stable'] and bool(receipt['answer']) \
                  and receipt.get('released', True) is not False
