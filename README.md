@@ -10,6 +10,8 @@ with OpenAI Codex as the reference design (`UPSTREAM.md`).
 
 **Start here:** the reading order below, then the backlog.
 
+For outside source projects and update checks, see [EXTERNAL_REPOS.md](EXTERNAL_REPOS.md); [UPSTREAM.md](UPSTREAM.md) records harness reference revisions.
+
 For candidate trials, use `docs/HARNESS_TEST_PLAYBOOK.md`: phased gates and receipts adapted from
 benchmarking's new-model integration process. The live lane requires a model already ready through
 the gateway route the candidate will use.
