@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "scope": "Deterministic diagnostics MCP server; search and delegation comparison tools are recorded under their owning surfaces in tool_registry.json",
+  "surfaces": {
+    "diagnostics": {
+      "owner": "llm-harness",
+      "status": "test_fixture",
+      "category": "diagnostics",
+      "implementation": "tools/fixtures/diagnostics_mcp.mjs",
+      "purpose": "Deterministic MCP call, argument, text, and structured-result checks",
+      "tools": [
+        {
+          "name": "read_marker"
+        },
+        {
+          "name": "read_structured_marker"
+        },
+        {
+          "name": "calculate_sum"
+        },
+        {
+          "name": "calculate_product"
+        },
+        {
+          "name": "get_entry"
+        },
+        {
+          "name": "get_nested_entry"
+        }
+      ]
+    }
+  }
+}

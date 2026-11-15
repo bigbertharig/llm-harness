@@ -9,7 +9,7 @@ import threading
 import time
 import comparison_short_control as common
 from candidate_controllers.text_tool_bridge import parse_request, call_tool
-FIXTURE = common.ROOT / "tools/fixtures/local_mcp_marker.mjs"
+FIXTURE = common.ROOT / "tools/fixtures/diagnostics_mcp.mjs"
 CONFIGS = common.ROOT / "tools/comparison_fixtures"
 SYSTEM = ("Use only the named local fixture MCP tool. Do not use shell, file, web, "
           "or editing tools. Return only the exact marker from the tool result.")
@@ -35,7 +35,7 @@ def write_models(path):
 def run_pi(out, prompt, server=None, target=None, system=None):
     target = target or ('read_structured_marker' if 'read_structured_marker' in prompt else 'read_marker')
     targets = list(target) if isinstance(target, (list, tuple)) else [target]
-    server = server or {'name': 'fixture', 'command': [str(common.NODE), str(FIXTURE), str(out / 'calls.jsonl')],
+    server = server or {'name': 'fixture', 'command': [str(common.NODE), str(FIXTURE), 'marker', str(out / 'calls.jsonl')],
                         'tools': ['read_marker', 'read_structured_marker']}
     system = system or SYSTEM
     help_spec = help_spec_for(server, targets)

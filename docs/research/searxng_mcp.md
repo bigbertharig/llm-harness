@@ -1,5 +1,8 @@
 # SearXNG MCP search tool
 
+> Historical comparison record. The standalone SearXNG and DuckDuckGo MCP adapters were retired; `rig_search` is the operational search MCP.
+
+
 `mcp_servers/searxng/server.py` is a standalone stdio MCP server for live SearXNG search. It uses only the Python standard library. It does not depend on the `llm_orchestration` checkout or any particular harness or model. Any MCP-capable harness can launch this command and expose its `search_web` tool; the comparison runner uses its own Python interpreter for this backend rather than the older DuckDuckGo helper's virtual environment.
 
 Set `SEARXNG_URL` in the server process environment to the SearXNG instance root, for example `http://127.0.0.1:8888`, or its `/search` URL. For harnesses that do not preserve the runner environment in an MCP child process, pass `--endpoint URL` after the optional receipt path; this takes precedence over the environment variable. The instance must allow JSON output (`format=json`); [SearXNG's Search API documentation](https://docs.searxng.org/dev/search_api.html) notes that requesting a disabled format returns HTTP 403. The URL is not exposed in MCP responses or logs. With no configured URL, the tool remains discoverable and returns a clear configuration error on call.

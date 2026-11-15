@@ -20,10 +20,7 @@ from candidate_controllers.hermes import run_hermes
 from search_provider_benchmark import QUERIES
 
 
-PYTHON = '/home/bryan/llm-orchestration-venv/bin/python'
-SERVERS = {'ddg': common.ROOT / 'tools/local_mcp_web_search.py',
-           'searxng': common.ROOT / 'mcp_servers/searxng/server.py',
-           'rig_search': common.ROOT / 'mcp_servers/rig_search/mcp_server.py'}
+SERVERS = {'rig_search': common.ROOT / 'mcp_servers/rig_search/mcp_server.py'}
 DRIVERS = {'pi': old_drivers.run_pi, 'deepseek': old_drivers.run_deepseek,
            'opencode': old_drivers.run_opencode, 'codex': extra_drivers.run_codex,
            'nanobot': extra_drivers.run_nanobot, 'hermes': run_hermes}
@@ -39,18 +36,13 @@ def expected_domain_rank(urls, domains):
 
 def result_root(run_id, backend):
     base = common.ROOT / 'results' / run_id
-    return base if backend == 'ddg' else base / backend
+    return base / backend
 
 
 def search_server(backend, receipt):
-    python = sys.executable if backend in ('searxng', 'rig_search') else PYTHON
-    command = [python, str(SERVERS[backend]), str(receipt)]
-    if backend == 'searxng':
-        command += ['--endpoint', os.environ['SEARXNG_URL']]
-    elif backend == 'rig_search':
-        command += ['--env-file', os.environ.get('RIG_SEARCH_ENV_FILE',
-                                                str(common.ROOT / '.env')),
-                    '--providers', os.environ.get('RIG_SEARCH_COMPARE_PROVIDERS', 'searxng')]
+    command = [sys.executable, str(SERVERS[backend]), str(receipt),
+               '--env-file', os.environ.get('RIG_SEARCH_ENV_FILE', str(common.ROOT / '.env')),
+               '--providers', os.environ.get('RIG_SEARCH_COMPARE_PROVIDERS', 'searxng')]
     return {'name': 'web_search', 'command': command,
             'tools': ['search_web']}
 
@@ -96,7 +88,7 @@ def direct_baseline(server, args, out):
     return result
 
 
-def run_case(candidate, case, run_id, backend='ddg'):
+def run_case(candidate, case, run_id, backend='rig_search'):
     out = result_root(run_id, backend) / candidate / case['id']
     out.mkdir(parents=True, exist_ok=False)
     (out / 'workspace').mkdir()
@@ -190,10 +182,8 @@ def main():
     parser.add_argument('candidate', choices=sorted(DRIVERS))
     parser.add_argument('--run-id', required=True)
     parser.add_argument('--case', choices=[x['id'] for x in QUERIES])
-    parser.add_argument('--backend', choices=sorted(SERVERS), default='ddg')
+    parser.add_argument('--backend', choices=sorted(SERVERS), default='rig_search')
     args = parser.parse_args()
-    if args.backend == 'searxng' and not os.environ.get('SEARXNG_URL'):
-        parser.error('SearXNG requires SEARXNG_URL in the runner environment')
     if args.backend == 'rig_search' and not Path(os.environ.get(
             'RIG_SEARCH_ENV_FILE', str(common.ROOT / '.env'))).is_file():
         parser.error('rig_search requires a private env file')

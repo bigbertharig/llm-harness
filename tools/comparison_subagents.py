@@ -19,11 +19,11 @@ ROOT = common.ROOT
 FIXTURE = ROOT / 'tools/fixtures/subagent_mcp.py'
 CONTRACT = ROOT / 'tools/subagent_contract.py'
 TASK = 'Solve the private arithmetic check and return the result.'
-PROMPT = ('Call the subagent MCP tool delegate_task exactly once with agent_type coding and '
+PROMPT = ('Call the local_agents MCP tool delegate_fixture_task exactly once with agent_type coding and '
           'task "Solve the private arithmetic check and return the result." '
           'The tool response reveals the child question. Verify the child answer against that question, '
           'then reply with only the verified decimal answer.')
-SYSTEM = ('You are a parent agent. Use only the subagent delegate_task MCP tool. '
+SYSTEM = ('You are a parent agent. Use only the local_agents delegate_fixture_task MCP tool. '
           'Create one child, inspect its route and answer, verify the arithmetic, and reply with the number only.')
 CANDIDATES = tuple(web.DRIVERS)
 
@@ -46,7 +46,7 @@ def direct_control(server, out):
         proc.stdin.flush()
         listed = matrix.request_stdio(proc, 2, 'tools/list')
         proc.stdin.write(json.dumps({'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call',
-            'params': {'name': 'delegate_task', 'arguments': {'agent_type': 'coding', 'task': TASK}}}) + '\n')
+            'params': {'name': 'delegate_fixture_task', 'arguments': {'agent_type': 'coding', 'task': TASK}}}) + '\n')
         proc.stdin.flush()
         if not select.select([proc.stdout], [], [], 320)[0]:
             raise TimeoutError('managed child baseline did not return within readiness deadline')
@@ -64,7 +64,7 @@ def direct_control(server, out):
         (out / 'baseline_stderr.log').write_text(proc.stderr.read())
     body = result.get('structuredContent') or {}
     checks = {'protocol': init.get('protocolVersion') == '2025-06-18',
-              'tool_exposed': {x['name'] for x in listed.get('tools', [])} == {'delegate_task'},
+              'tool_exposed': {x['name'] for x in listed.get('tools', [])} == {'delegate_fixture_task'},
               'no_tool_error': not result.get('isError'),
               'hidden_question_answered': body.get('question') == 'What is 7 multiplied by 6? Return only the decimal number.'
                   and body.get('child_answer') == '42',
@@ -80,9 +80,9 @@ def one(candidate, run_id, baseline_only=False):
     out.mkdir(parents=True, exist_ok=False)
     (out / 'workspace').mkdir()
     parent_route = common.route_spec(candidate)[0]
-    server = {'name': 'subagent', 'command': [sys.executable, str(FIXTURE), parent_route,
+    server = {'name': 'local_agents', 'command': [sys.executable, str(FIXTURE), parent_route,
               str(out / 'children'), str(out / 'calls.jsonl')],
-              'tools': ['delegate_task']}
+              'tools': ['delegate_fixture_task']}
     started = time.monotonic()
     try:
         baseline = direct_control(server, out)
@@ -105,7 +105,7 @@ def one(candidate, run_id, baseline_only=False):
         return receipt
     before = matrix.candidate_roster(candidate)
     try:
-        result = web.DRIVERS[candidate](out, PROMPT, server=server, target='delegate_task', system=SYSTEM)
+        result = web.DRIVERS[candidate](out, PROMPT, server=server, target='delegate_fixture_task', system=SYSTEM)
     except Exception as exc:
         result = {'answer': '', 'exit_code': None, 'finish_reason': None,
                   'errors': [f'{type(exc).__name__}: {exc}']}
@@ -121,7 +121,7 @@ def one(candidate, run_id, baseline_only=False):
     child = json.loads(children[0].read_text()) if len(children) == 1 else {}
     answer = (result.get('answer') or '').strip()
     checks = {'baseline_passed': baseline['passed'], 'roster_unchanged': before == after,
-              'one_delegate_call': len(calls) == 1 and calls[0].get('tool') == 'delegate_task',
+              'one_delegate_call': len(calls) == 1 and calls[0].get('tool') == 'delegate_fixture_task',
               'requested_coding': len(calls) == 1 and calls[0].get('arguments', {}).get('agent_type') == 'coding',
               'task_supplied': len(calls) == 1 and bool(calls[0].get('arguments', {}).get('task')),
               'one_child_receipt': len(children) == 1,

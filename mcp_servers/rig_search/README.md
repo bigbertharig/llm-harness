@@ -154,8 +154,8 @@ text length. Per-domain pacing belongs at the coordinator.
 
 ## Status and tests
 
-This is an isolated prototype. The harness still has its original SearXNG
-server; its MCP registration has not moved here. The original five providers
+This is the dashboard's active search MCP. The earlier standalone SearXNG and
+DuckDuckGo MCP adapters were retired; provider comparisons remain in this package. The original five providers
 were compared live on four matched queries from the main Pi. Direct DuckDuckGo
 was added afterward as a sixth option and needs a matched quality replay.
 Its first live Pi probe returned no DDG hits, and the DDG HTML endpoint

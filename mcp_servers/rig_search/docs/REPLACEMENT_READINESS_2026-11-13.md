@@ -1,5 +1,8 @@
 # Harness search replacement readiness, 2026-11-13
 
+> Historical comparison record. The standalone SearXNG and DuckDuckGo MCP adapters were retired; `rig_search` is the operational search MCP.
+
+
 For the combined evidence and lessons from the research assistant, see
 [Search: evidence and lessons](SEARCH_OVERVIEW.md).
 

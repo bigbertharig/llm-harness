@@ -14,7 +14,7 @@ from subagent_contract import canonical_integer_answer
 
 QUESTION = 'What is 7 multiplied by 6? Return only the decimal number.'
 ANSWER = '42'
-TOOL = {'name': 'delegate_task',
+TOOL = {'name': 'delegate_fixture_task',
         'description': 'Ask a coding child agent to answer a private arithmetic check. The child question is revealed with its result so the parent can verify the answer. The manager chooses and prepares its GPU route.',
         'inputSchema': {'type': 'object', 'properties': {
             'agent_type': {'type': 'string', 'enum': ['coding']},
@@ -39,7 +39,7 @@ def main():
         method, ident = packet.get('method'), packet['id']
         if method == 'initialize':
             result = {'protocolVersion': '2025-06-18', 'capabilities': {'tools': {}},
-                      'serverInfo': {'name': 'subagent-comparison', 'version': '1'}}
+                      'serverInfo': {'name': 'local_agents-test-profile', 'version': '1'}}
         elif method == 'tools/list':
             result = {'tools': [TOOL]}
         elif method == 'ping':
@@ -48,9 +48,9 @@ def main():
             params = packet.get('params') or {}
             args = params.get('arguments') or {}
             log({'method': method, 'tool': params.get('name'), 'arguments': args})
-            if (params.get('name') != 'delegate_task' or args.get('agent_type') != 'coding'
+            if (params.get('name') != 'delegate_fixture_task' or args.get('agent_type') != 'coding'
                     or not isinstance(args.get('task'), str) or not 1 <= len(args['task']) <= 300):
-                data, failed = {'error': 'invalid delegate_task arguments'}, True
+                data, failed = {'error': 'invalid delegate_fixture_task arguments'}, True
             else:
                 try:
                     receipt = run_child(parent_id=parent_route,
@@ -69,7 +69,7 @@ def main():
                     failed = receipt['exit_code'] != 0 or not receipt['roster_stable'] or canonical != ANSWER
                 except Exception as exc:
                     data, failed = {'error': f'{type(exc).__name__}: {exc}'}, True
-            log({'method': 'tool/result', 'tool': 'delegate_task', 'data': data, 'isError': failed})
+            log({'method': 'tool/result', 'tool': 'delegate_fixture_task', 'data': data, 'isError': failed})
             result = {'isError': failed, 'content': [{'type': 'text', 'text': json.dumps(data)}],
                       'structuredContent': data}
         else:

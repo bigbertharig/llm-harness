@@ -38,7 +38,7 @@ class TextToolBridgeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             log = Path(temp) / 'calls.jsonl'
             server = {'name': 'marker', 'command': ['node',
-                      str(ROOT / 'tools/fixtures/local_mcp_marker.mjs'), str(log)],
+                      str(ROOT / 'tools/fixtures/diagnostics_mcp.mjs'), 'marker', str(log)],
                       'tools': ['read_marker']}
             with self.assertRaises(ValueError):
                 call_stdio(server, 'read_marker', {'unadvertised': 'x'})
@@ -49,7 +49,7 @@ class TextToolBridgeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             log = Path(temp) / 'calls.jsonl'
             server = {'name': 'marker', 'command': ['node',
-                      str(ROOT / 'tools/fixtures/local_mcp_marker.mjs'), str(log)],
+                      str(ROOT / 'tools/fixtures/diagnostics_mcp.mjs'), 'marker', str(log)],
                       'tools': ['read_marker']}
             result = call_stdio(server, 'read_marker', {})
             self.assertFalse(result['isError'])

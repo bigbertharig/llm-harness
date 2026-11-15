@@ -17,8 +17,7 @@ import comparison_extra_candidates as extra_driver
 from candidate_controllers.hermes import run_hermes
 
 ROOT = common.ROOT
-MATRIX_SERVER = ROOT / 'tools/fixtures/local_mcp_matrix.mjs'
-MARKER_SERVER = ROOT / 'tools/fixtures/local_mcp_marker.mjs'
+DIAGNOSTICS_SERVER = ROOT / 'tools/fixtures/diagnostics_mcp.mjs'
 URLS = {
     'daedalmap': 'https://app.daedalmap.com/mcp/free',
     'deepwiki': 'https://mcp.deepwiki.com/mcp',
@@ -60,9 +59,7 @@ def server_for(case, out):
     name = CASES[case][0]
     if name in URLS:
         return {'name': name, 'url': URLS[name], 'tools': [CASES[case][1]]}
-    command = ([str(common.NODE), str(MARKER_SERVER), str(out / 'calls.jsonl')]
-               if name == 'marker' else
-               [str(common.NODE), str(MATRIX_SERVER), name, str(out / 'calls.jsonl')])
+    command = [str(common.NODE), str(DIAGNOSTICS_SERVER), name, str(out / 'calls.jsonl')]
     tools = {'marker': ['read_marker', 'read_structured_marker'],
              'numeric': ['calculate_sum', 'calculate_product'],
              'lookup': ['get_entry', 'get_nested_entry']}[name]

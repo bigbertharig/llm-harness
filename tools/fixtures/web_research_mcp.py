@@ -15,10 +15,10 @@ from web_research_control import FACT, QUERY, Fixture
 
 SCRAPER = Path('/home/bryan/llm_orchestration/shared/plans/shoulders/research_assistant/scripts/scrape_pages.py')
 TOOLS = [
-    {'name': 'search_web', 'description': 'Find a relevant page. Snippets omit the answer; fetch the page to answer.',
+    {'name': 'search_fixture_web', 'description': 'Find a relevant page. Snippets omit the answer; fetch the page to answer.',
      'inputSchema': {'type': 'object', 'properties': {'query': {'type': 'string'}},
                      'required': ['query'], 'additionalProperties': False}},
-    {'name': 'fetch_page', 'description': 'Fetch and extract the text of a URL returned by search_web using the CPU scraper.',
+    {'name': 'fetch_fixture_page', 'description': 'Fetch and extract the text of a URL returned by search_fixture_web using the CPU scraper.',
      'inputSchema': {'type': 'object', 'properties': {'url': {'type': 'string'}},
                      'required': ['url'], 'additionalProperties': False}},
 ]
@@ -50,21 +50,21 @@ def main():
                 if method == 'initialize':
                     result = {'protocolVersion': '2025-06-18',
                               'capabilities': {'tools': {'listChanged': False}},
-                              'serverInfo': {'name': 'web-research-control', 'version': '1'}}
+                              'serverInfo': {'name': 'rig_search-test-profile', 'version': '1'}}
                 elif method == 'tools/list':
                     result = {'tools': TOOLS}
                 elif method == 'tools/call':
                     params = message.get('params') or {}
                     name, args = params.get('name'), params.get('arguments')
                     log({'method': 'tools/call', 'tool': name, 'arguments': args})
-                    if name == 'search_web' and args == {'query': QUERY}:
+                    if name == 'search_fixture_web' and args == {'query': QUERY}:
                         with urlopen(base + '/search?q=archive%20beacon%20cadence&format=json', timeout=5) as response:
                             packet = json.load(response)
                         data = {'results': [{'url': item['url'], 'title': item['title'],
                                              'snippet': item['content']} for item in packet['results']],
                                 'result_count': len(packet['results'])}
                         result = reply_data(data)
-                    elif name == 'fetch_page' and args == {'url': approved}:
+                    elif name == 'fetch_fixture_page' and args == {'url': approved}:
                         with tempfile.TemporaryDirectory(prefix='web_research_mcp_') as temp:
                             batch = Path(temp)
                             target = batch / 'results'

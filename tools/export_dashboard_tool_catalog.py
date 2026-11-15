@@ -17,22 +17,37 @@ def build(registry: dict) -> dict:
     if registry.get("schema_version") != 1 or not isinstance(registry.get("surfaces"), dict):
         raise ValueError("unsupported tool registry")
     servers = {}
+    all_names = set()
     for name, surface in registry["surfaces"].items():
         if not isinstance(surface, dict) or not isinstance(surface.get("tools"), list):
             raise ValueError(f"invalid tool surface: {name}")
+        if surface.get("category") not in {"search", "local_info", "delegate", "external", "diagnostics"}:
+            raise ValueError(f"invalid tool category: {name}")
+        if surface.get("status") not in {"dashboard", "candidate", "prototype", "external_observed", "external_live_discovered",
+                                         "discovery_pending"}:
+            raise ValueError(f"invalid tool status: {name}")
+        tools = surface["tools"]
+        if surface["status"] == "discovery_pending" and tools or surface["status"] != "discovery_pending" and not tools:
+            raise ValueError(f"invalid discovery state: {name}")
+        names = [tool.get("name") if isinstance(tool, dict) else None for tool in tools]
+        if any(not isinstance(tool_name, str) or not tool_name.isidentifier() for tool_name in names):
+            raise ValueError(f"invalid tool name: {name}")
+        if len(names) != len(set(names)) or all_names.intersection(names):
+            raise ValueError(f"tool name collision: {name}")
+        all_names.update(names)
         if surface.get("status") != "dashboard":
             continue
         if surface.get("owner") != "llm-harness" or not name.isidentifier():
             raise ValueError(f"invalid dashboard surface: {name}")
-        tools = surface["tools"]
-        if not tools or any(set(tool) != {"name", "approval"} or
-                            not isinstance(tool["name"], str) or not tool["name"].isidentifier() or
-                            tool["approval"] not in {"automatic", "disabled"} for tool in tools):
+        if any((set(tool) != {"name", "approval"} or
+                tool["approval"] not in {"automatic", "disabled"}) if "status" not in tool else
+               (tool["status"] != "prototype" or set(tool) != {"name", "status", "implementation"})
+               for tool in tools):
             raise ValueError(f"invalid dashboard tools: {name}")
-        names = [tool["name"] for tool in tools]
-        if len(names) != len(set(names)):
-            raise ValueError(f"duplicate dashboard tools: {name}")
-        servers[name] = {"purpose": surface["purpose"], "tools": tools}
+        enabled = [tool for tool in tools if "approval" in tool]
+        if not enabled:
+            raise ValueError(f"no dashboard tools: {name}")
+        servers[name] = {"purpose": surface["purpose"], "tools": enabled}
     if not servers:
         raise ValueError("no dashboard tools")
     return {"schema_version": 1, "servers": servers}

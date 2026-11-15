@@ -14,7 +14,7 @@ import time
 
 import comparison_short_control as common
 
-FIXTURE = common.ROOT / 'tools/fixtures/local_mcp_marker.mjs'
+FIXTURE = common.ROOT / 'tools/fixtures/diagnostics_mcp.mjs'
 CONFIGS = common.ROOT / 'tools/comparison_fixtures'
 SYSTEM = ('Use only the named local fixture MCP tool. Do not use shell, file, web, '
           'or editing tools. Return only the exact marker from the tool result.')
@@ -39,7 +39,7 @@ def read_jsonl(path):
 
 def direct_baseline(out):
     receipt = out / 'baseline_calls.jsonl'
-    proc = subprocess.Popen([str(common.NODE), str(FIXTURE), str(receipt)],
+    proc = subprocess.Popen([str(common.NODE), str(FIXTURE), 'marker', str(receipt)],
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, bufsize=1)
     transcript = []

@@ -1,0 +1,745 @@
+{
+  "load_recipes": {
+    "nemotron74_expert1060_chat1060_v1": {
+      "evidence": [
+        "results/runtime_experiments/kv_expert_chat_20261107/README.md",
+        "results/runtime_experiments/kv_matched_placement_20261107/README.md"
+      ],
+      "model": "nemotron-3.5-bolt:74b-a9b",
+      "placement": {
+        "chat_state": [
+          "gpu_workers"
+        ],
+        "experts": [
+          "gpu_workers"
+        ],
+        "weights": [
+          "gpu0"
+        ]
+      },
+      "procedure": "kv_expert_private_v1",
+      "status": "research"
+    },
+    "qwen27_3090_five_kv1060_v1": {
+      "evidence": [
+        "results/runtime_experiments/kv_local_worker_matrix_20261107/README.md",
+        "results/runtime_experiments/kv_overnight_20261107/README.md"
+      ],
+      "model": "qwen3.6:27b",
+      "placement": {
+        "chat_state": [
+          "gpu_workers"
+        ],
+        "weights": [
+          "gpu0"
+        ]
+      },
+      "procedure": "kvchat_private_v1",
+      "status": "research"
+    }
+  },
+  "models": {
+    "deepseek-r1:14b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "deepseek-r1:32b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "deepseek-r1:7b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "devstral-small:24b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 4096,
+          "good_for": []
+        },
+        "interactive": {
+          "context_limit": 32768,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "gemma-3:12b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "gemma-3:4b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 4096,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "gemma-4:12b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 4096,
+          "good_for": [
+            "chatbot"
+          ]
+        }
+      },
+      "status": "active"
+    },
+    "gemma-4:26b-a4b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "gemma-4:31b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "interactive": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "gemma-4:e2b-q8": {
+      "aliases": [
+        "gemma-4:e2b"
+      ],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 4096,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "gemma-4:e4b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 4096,
+          "good_for": [
+            "chatbot"
+          ]
+        }
+      },
+      "status": "active"
+    },
+    "gpt-oss:20b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "interactive": {
+          "context_limit": 65536,
+          "good_for": [
+            "chatbot"
+          ]
+        }
+      },
+      "status": "active"
+    },
+    "k2-v2-instruct:70b": {
+      "aliases": [],
+      "in_testing": true,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        }
+      },
+      "status": "candidate"
+    },
+    "llama3.2:3b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 4096,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "llama3.3:70b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 2048,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "mellum2.1:12b-a2.5b": {
+      "aliases": [],
+      "in_testing": true,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        },
+        "thinking": {
+          "context_limit": 8192,
+          "good_for": []
+        }
+      },
+      "status": "candidate"
+    },
+    "minicpm5:2b": {
+      "aliases": [],
+      "in_testing": true,
+      "profiles": {
+        "default": {
+          "context_limit": 4096,
+          "good_for": []
+        }
+      },
+      "status": "candidate"
+    },
+    "ministral-3:14b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 8192,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "ministral-3:3b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 8192,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "ministral-3:8b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 8192,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "mistral:7b-instruct": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 12288,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "nemotron-3.5-bolt:74b-a9b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "nex-n2.5:mini": {
+      "aliases": [],
+      "in_testing": true,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        },
+        "interactive": {
+          "context_limit": 65536,
+          "good_for": []
+        }
+      },
+      "status": "candidate"
+    },
+    "ornith-1.5:35b-a3b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "ornith-1.5:9b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        },
+        "thinking": {
+          "context_limit": 8192,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "phi-4-mini-reasoning:3.8b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 4096,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "phi-4-mini:3.8b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 4096,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "phi-4:14b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "qwen2.5-coder:14b": {
+      "aliases": [
+        "qwen2.5:14b"
+      ],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "qwen2.5-coder:32b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "qwen2.5-coder:7b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "interactive": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "qwen3-coder-next:80b-a3b": {
+      "aliases": [],
+      "in_testing": true,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "candidate"
+    },
+    "qwen3-coder:30b-a3b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "interactive": {
+          "context_limit": 32768,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "qwen3.5:27b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "qwen3.5:35b-a3b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "qwen3.5:4b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "qwen3.5:9b-q3km": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "qwen3.6:27b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "interactive": {
+          "context_limit": 65536,
+          "good_for": [
+            "chatbot"
+          ]
+        },
+        "orchestration": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "qwen3.6:35b-a3b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "interactive": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "qwen3.6:35b-a3b-xl": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "interactive": {
+          "context_limit": 16384,
+          "good_for": []
+        },
+        "orchestration": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    },
+    "qwen3.8-flash-next:q2_0": {
+      "aliases": [],
+      "in_testing": true,
+      "profiles": {
+        "default": {
+          "context_limit": 8192,
+          "good_for": []
+        }
+      },
+      "status": "candidate"
+    },
+    "qwen3.8:27b": {
+      "aliases": [],
+      "in_testing": true,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "candidate"
+    },
+    "qwen3:1.7b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 4096,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "qwen3:14b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 4096,
+          "good_for": []
+        }
+      },
+      "status": "invalid"
+    },
+    "qwen3:8b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 16384,
+          "good_for": []
+        }
+      },
+      "status": "archived"
+    },
+    "smollm3:3b": {
+      "aliases": [],
+      "in_testing": false,
+      "profiles": {
+        "default": {
+          "context_limit": 4096,
+          "good_for": []
+        }
+      },
+      "status": "active"
+    }
+  },
+  "roles": {
+    "brain": {
+      "model": "qwen3.6:27b",
+      "profile": "default"
+    },
+    "brain_code": {
+      "model": "qwen3-coder:30b-a3b",
+      "profile": "default"
+    },
+    "safe_tool_use": {
+      "model": "phi-4:14b",
+      "profile": "default"
+    },
+    "single_1060": {
+      "model": "ornith-1.5:9b",
+      "profile": "default"
+    },
+    "single_1060_code": {
+      "model": "qwen2.5-coder:7b",
+      "profile": "default"
+    },
+    "single_1060_compact": {
+      "model": "ministral-3:3b",
+      "profile": "default"
+    },
+    "split_quality": {
+      "model": "ministral-3:14b",
+      "profile": "default"
+    },
+    "split_speed": {
+      "model": "ministral-3:8b",
+      "profile": "default"
+    },
+    "text_extraction": {
+      "model": "gemma-4:e2b-q8",
+      "profile": "default"
+    }
+  },
+  "schema": "harness-model-library/1",
+  "source_sha256": "e9c1dc65156d9261843385fb17ba6740683b3413c44e0ea6f48955512979888e",
+  "subagent_catalog": {
+    "codex_luna": {
+      "agent_types": [
+        "coding",
+        "research"
+      ],
+      "availability": "check_codex_model_list",
+      "evidence": "Pi Codex app-server model/list, observed 2026-11-12",
+      "model": "gpt-5.6-luna",
+      "provider": "codex",
+      "status": "candidate"
+    },
+    "codex_terra": {
+      "agent_types": [
+        "coding",
+        "research"
+      ],
+      "availability": "check_codex_model_list",
+      "evidence": "Pi Codex app-server model/list, observed 2026-11-12",
+      "model": "gpt-5.6-terra",
+      "provider": "codex",
+      "status": "candidate"
+    },
+    "qwen35_shared_1060": {
+      "agent_types": [
+        "coding",
+        "research"
+      ],
+      "context_cap": 262144,
+      "evidence": "results/runtime_experiments/qwen35_shared_kv_service_20261112/README.md",
+      "mode": "gpu1060-chat-q4",
+      "model": "qwen3.6:35b-a3b-xl",
+      "provider": "rig_shared_chat",
+      "requires": {
+        "mode": "gpu0-main-q4",
+        "model": "qwen3.6:35b-a3b-xl"
+      },
+      "status": "experimental"
+    }
+  }
+}

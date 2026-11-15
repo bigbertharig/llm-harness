@@ -124,9 +124,9 @@ class GatewaySubagentRequest(unittest.TestCase):
                                   capture_output=True, timeout=5)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         tools = json.loads(proc.stdout)['result']['tools']
-        self.assertEqual([tool['name'] for tool in tools], ['delegate_task'])
-        self.assertEqual(set(tools[0]['inputSchema']['properties']), {'agent_type', 'task', 'candidate_id'})
-        self.assertEqual(tools[0]['inputSchema']['properties']['agent_type']['enum'],
+        self.assertEqual([tool['name'] for tool in tools], ['list_local_agents', 'delegate_task'])
+        self.assertEqual(set(tools[1]['inputSchema']['properties']), {'agent_type', 'task', 'candidate_id'})
+        self.assertEqual(tools[1]['inputSchema']['properties']['agent_type']['enum'],
                          ['coding', 'research'])
 
     def test_cloud_parent_mcp_exposes_local_only_tool(self):
@@ -139,9 +139,9 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         tools = json.loads(proc.stdout)['result']['tools']
         self.assertEqual([row['name'] for row in tools],
-                         ['list_local_agents', 'delegate_local_task'])
+                         ['list_local_agents', 'delegate_task'])
         tool = tools[1]
-        self.assertEqual(tool['name'], 'delegate_local_task')
+        self.assertEqual(tool['name'], 'delegate_task')
         self.assertEqual(set(tool['inputSchema']['properties']), {'agent_type', 'task', 'candidate_id'})
         self.assertEqual(tool['inputSchema']['properties']['candidate_id']['enum'],
                          ['qwen35_shared_1060'])

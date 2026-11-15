@@ -30,11 +30,11 @@ def direct_control(server, out):
         proc.stdin.flush()
         listed = matrix.request_stdio(proc, 2, 'tools/list')
         search = matrix.request_stdio(proc, 3, 'tools/call',
-                                     {'name': 'search_web', 'arguments': {'query': QUERY}})
+                                     {'name': 'search_fixture_web', 'arguments': {'query': QUERY}})
         results = search.get('structuredContent', {}).get('results') or []
         url = results[0].get('url') if results else ''
         fetched = matrix.request_stdio(proc, 4, 'tools/call',
-                                      {'name': 'fetch_page', 'arguments': {'url': url}})
+                                      {'name': 'fetch_fixture_page', 'arguments': {'url': url}})
     finally:
         proc.stdin.close()
         try:
@@ -44,7 +44,7 @@ def direct_control(server, out):
         (out / 'baseline_stderr.log').write_text(proc.stderr.read())
     body = fetched.get('structuredContent') or {}
     checks = {'protocol': init.get('protocolVersion') == '2025-06-18',
-              'two_tools': {'search_web', 'fetch_page'} <= {x['name'] for x in listed.get('tools', [])},
+              'two_tools': {'search_fixture_web', 'fetch_fixture_page'} <= {x['name'] for x in listed.get('tools', [])},
               'search_result': len(results) == 2 and url.startswith('http://127.0.0.1:'),
               'answer_absent_from_snippets': all(ANSWER not in x.get('snippet', '') for x in results),
               'cpu_scraper_ok': body.get('cpu_scraper_exit_code') == 0 and body.get('fetch_status') == 'ok',
@@ -57,9 +57,9 @@ def one(candidate, run_id, baseline_only=False):
     out = ROOT / 'results' / run_id / 'research' / candidate
     out.mkdir(parents=True, exist_ok=False)
     (out / 'workspace').mkdir()
-    server = {'name': 'web_research',
+    server = {'name': 'rig_search',
               'command': [sys.executable, str(FIXTURE), str(out / 'calls.jsonl')],
-              'tools': ['search_web', 'fetch_page']}
+              'tools': ['search_fixture_web', 'fetch_fixture_page']}
     fixture_hash = hashlib.sha256(FIXTURE.read_bytes()).hexdigest()
     before = matrix.candidate_roster(candidate) if not baseline_only else None
     started = time.monotonic()
@@ -74,21 +74,21 @@ def one(candidate, run_id, baseline_only=False):
         return receipt
     candidate_result = None
     if baseline['passed']:
-        prompt = ('Call web_research search_web exactly once with {"query":"archive beacon cadence"}. '
-                  'Then call web_research fetch_page exactly once using the first returned URL. '
+        prompt = ('Call rig_search search_fixture_web exactly once with {"query":"archive beacon cadence"}. '
+                  'Then call rig_search fetch_fixture_page exactly once using the first returned URL. '
                   'The answer is absent from search snippets; read the fetched page text. '
                   'In answer give only the cadence value, such as a number and unit. '
                   'Return JSON only: {"answer":"...","source_url":"..."}.')
-        system = ('Use only the web_research MCP tools search_web and fetch_page. '
+        system = ('Use only the rig_search MCP tools search_fixture_web and fetch_fixture_page. '
                   'Ground the answer in fetched page text and cite the fetched URL.')
         candidate_result = web.DRIVERS[candidate](out, prompt, server=server,
-                                                  target=['search_web', 'fetch_page'], system=system)
+                                                  target=['search_fixture_web', 'fetch_fixture_page'], system=system)
     after = matrix.candidate_roster(candidate)
     logs = web.old_drivers.read_jsonl(out / 'calls.jsonl') if (out / 'calls.jsonl').exists() else []
     calls = [x for x in logs if x.get('method') == 'tools/call']
     tool_results = [x for x in logs if x.get('method') == 'tool/result']
-    search = next((x.get('data') or {} for x in tool_results if x.get('tool') == 'search_web'), {})
-    fetch = next((x.get('data') or {} for x in tool_results if x.get('tool') == 'fetch_page'), {})
+    search = next((x.get('data') or {} for x in tool_results if x.get('tool') == 'search_fixture_web'), {})
+    fetch = next((x.get('data') or {} for x in tool_results if x.get('tool') == 'fetch_fixture_page'), {})
     search_urls = [x.get('url') for x in search.get('results', [])]
     answer_text = (candidate_result or {}).get('answer', '').strip()
     try:
@@ -96,10 +96,10 @@ def one(candidate, run_id, baseline_only=False):
     except json.JSONDecodeError:
         answer = {}
     checks = {'baseline_passed': baseline['passed'], 'roster_unchanged': before == after,
-              'search_once': len([x for x in calls if x.get('tool') == 'search_web']) == 1,
-              'search_query_exact': any(x.get('tool') == 'search_web' and x.get('arguments') == {'query': QUERY} for x in calls),
-              'fetch_once': len([x for x in calls if x.get('tool') == 'fetch_page']) == 1,
-              'fetch_first_result': bool(search_urls) and any(x.get('tool') == 'fetch_page' and
+              'search_once': len([x for x in calls if x.get('tool') == 'search_fixture_web']) == 1,
+              'search_query_exact': any(x.get('tool') == 'search_fixture_web' and x.get('arguments') == {'query': QUERY} for x in calls),
+              'fetch_once': len([x for x in calls if x.get('tool') == 'fetch_fixture_page']) == 1,
+              'fetch_first_result': bool(search_urls) and any(x.get('tool') == 'fetch_fixture_page' and
                   x.get('arguments') == {'url': search_urls[0]} for x in calls),
               'no_other_tools': len(calls) == 2,
               'page_fetched': fetch.get('fetch_status') == 'ok' and ANSWER in fetch.get('page_text', ''),
