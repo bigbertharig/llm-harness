@@ -1,9 +1,9 @@
 # Open-source harness candidates: first-pass survey
 
 Date: 2026-10-26
-Status: documentation review only. No candidate has been run against the prepared rig roster, so this is not a performance ranking or a selection.
+Status: historical first-pass survey, written before candidate trials. Subsequent trial results are recorded in the [test playbook](../HARNESS_TEST_PLAYBOOK.md) and linked research receipts. This survey is not a current performance ranking or runtime selection.
 
-The binding boundary is [harness mode contract](harness_mode_contract_2026-10-26.md): gateway and rig orchestration prepare and operate model resources; a harness runs agent work against an offered, ready roster without loading, unloading, resizing, or placing models.
+The resource boundary is the [harness-mode contract](harness_mode_contract_2026-10-26.md): the gateway and rig orchestration prepare and operate model resources; a harness runs agent work against an offered, ready roster without loading, unloading, resizing, or placing models. See the gateway's [manager contract](https://github.com/bigbertharig/llm-gateway/blob/main/docs/MANAGER.md) for manager-owned preparation and routing.
 
 ## Shortlist for a same-model trial
 

@@ -1,49 +1,34 @@
 # llm-harness
 
-The agent harness for the local rig: the software around one model. It builds the prompt and
-context, defines and runs tools, compacts long histories, keeps sessions, retries, and hands
-subtasks to other models. It does not know about GPUs.
+Research and implementation work on the agent loop around a prepared model route: prompts, context, tools, compaction, sessions, delegation, limits, and recovery. It consumes Gateway routes and does not place models or control GPUs. Candidate harness comparisons and contracts live here; no candidate has been promoted as the Gateway work engine.
 
-Status (2026-11-02): research, a read-only ready-roster client, a frozen three-candidate short-control runner, and a six-candidate MCP comparison across six servers; no candidate harness integrated yet. The research and lessons below
-moved here from llm-gateway `docs/harness/` with their history. Build base: a fork of DeepSeek Harness,
-with OpenAI Codex as the reference design (`UPSTREAM.md`).
+## Project map
 
-**Start here:** the reading order below, then the backlog.
+This project runs local model and agent workloads across a Pi control host, an isolated GPU rig, and optional CPU workers. The four repositories have different jobs:
 
-For outside source projects and update checks, see [EXTERNAL_REPOS.md](EXTERNAL_REPOS.md); [UPSTREAM.md](UPSTREAM.md) records harness reference revisions.
+| Repository | Responsibility |
+|---|---|
+| [llm-gateway](https://github.com/bigbertharig/llm-gateway) | Operator-facing dashboard, conversations, model API, tool policy, and work coordination. Its existing Manager code still bridges some hardware operations. |
+| [llm_orchestration](https://github.com/bigbertharig/llm_orchestration) | Hardware-facing admission, placement, reservations, model lifecycle, telemetry, and the existing parallel batch engine. |
+| [benchmarking](https://github.com/bigbertharig/benchmarking) | Measured model and runtime evidence, model registry and roles, load recipes, evaluation suites, and results. |
+| [llm-harness](https://github.com/bigbertharig/llm-harness) | Experimental agent loop, context and session contracts, tool adapters, and harness comparisons. No candidate harness has been promoted as the gateway's work engine. |
 
-For candidate trials, use `docs/HARNESS_TEST_PLAYBOOK.md`: phased gates and receipts adapted from
-benchmarking's new-model integration process. The live lane requires a model already ready through
-the gateway route the candidate will use.
+Benchmarking publishes reviewed evidence; Gateway imports it and presents work to the operator; the rig-side Orchestration layer enforces hardware rules. Harness experiments consume prepared Gateway model routes. Gateway's current Manager still handles some admission and placement. Complete hardware reservations and placement are moving to Orchestration, so the target ownership and current code differ during the migration.
 
-## Where it sits
+## Read this repo
 
-| Repo | Owns | Start at |
-|---|---|---|
-| [llm-gateway](https://github.com/bigbertharig/llm-gateway) | the machines and the API: rig manager (leases, placement, model fit, runs, `rigctl`) and the OpenAI-compatible gateway on the Pi | `docs/MANAGER.md` |
-| [llm_orchestration](https://github.com/bigbertharig/llm_orchestration) | parallel batch work (brain + workers on a task queue), the rig-side hardware scripts, CPU workers | `shared/workspace/CONTEXT.md` |
-| [benchmarking](https://github.com/bigbertharig/benchmarking) | which models are good: `model_registry.json` (every model and how it loads), `model_roles.json` (which model per job), suites, results | `NEW_MODEL_INTEGRATION.md`, `MODEL_LIBRARY.md` |
-| **llm-harness** (this one) | one model in an interactive loop: chat, tools, context, sessions, delegation | this README |
-
-llm_orchestration is the "load many models, do parallel work" mode. This repo is the "load one model
-and talk to it" mode, and later a leader that delegates to followers. Both sit on top of the gateway
-and never touch cards directly. One user (the operator); no multi-user features.
+- [Harness test playbook](docs/HARNESS_TEST_PLAYBOOK.md): how candidate harnesses are compared.
+- [Harness mode contract](docs/research/harness_mode_contract_2026-10-26.md): candidate boundaries and trial modes.
+- [Future durable sessions](docs/REMOTE_SESSIONS_DESIGN.md): proposed session and remote-attachment contract; the deployed phone UI belongs to Gateway.
+- [External sources](EXTERNAL_REPOS.md) and [upstream revisions](UPSTREAM.md): provenance of referenced harnesses.
 
 ## Current deployment
 
-The gateway service and harness trials run on the Pi. The gateway is the user-facing routing layer;
-it already exposes the prepared model roster and inference API. The harness
-owns agent sessions, context, tools, and controls, and calls that gateway API. The rig runs the
-hardware-facing orchestration scripts and llama-server processes; orchestration owns model loading,
-placement, and GPU monitoring. The gateway reaches the rig over the private rig network.
+Gateway and the harness trial runners run on the Pi. The trial runners consume prepared model routes and test agent behavior; they do not own the deployed dashboard conversations. Gateway owns those conversations and its authenticated LAN/mobile front doors. Orchestration owns live hardware admission and model lifecycle on the isolated rig. A general durable harness session service remains a design; see [future durable sessions](docs/REMOTE_SESSIONS_DESIGN.md).
 
-This placement is the current deployment, not a requirement that a future harness process share the
-Pi. The API boundary is what matters: harness code consumes ready model routes and never controls
-GPU or llama-server lifecycle.
+## Gateway interface for trials
 
-## What it builds on (as of 2026-10-20)
-
-The gateway runs on the Pi (`pi-gateway.service`, 127.0.0.1:8080, OpenAI-compatible):
+The Gateway offers an OpenAI-compatible loopback API to the trial runners. The model examples and observations below are dated; inspect the current ready roster and Benchmarking registry before using a route:
 
 | Endpoint | Use for the harness |
 |---|---|
@@ -56,10 +41,10 @@ The gateway runs on the Pi (`pi-gateway.service`, 127.0.0.1:8080, OpenAI-compati
 
 - Context overflow comes back as OpenAI's `context_length_exceeded`, so the harness can react to it.
 - Offered profiles: llm-gateway `tools/generate_profiles.py` (`OFFER`) writes `remote_profiles.json`
-  from the benchmarking registry; today `chat-27b` (qwen3.6:27b, 65k), `gpt-oss-20b`, `coder-30b`,
+  from the benchmarking registry; recorded trial offers included `chat-27b` (qwen3.6:27b, 65k), `gpt-oss-20b`, `coder-30b`,
   `devstral-24b`, `nex-split`, `coder-7b`. Tool calling: gpt-oss-20b passed all six native tool-call
   probes; coder-7b writes calls as text; nex-split misses `attempt_completion`.
-- The gateway listens on loopback only and has no API key file yet; remote clients come later.
+- The core inference API listens on loopback. The separate phone dashboard is a Gateway service, not a harness trial endpoint.
 - `python tools/ready_roster.py --gateway http://127.0.0.1:8080` fetches the versioned roster
   without sending an LLM request. Set `LLM_GATEWAY_API_KEY` if gateway authentication is enabled.
   An empty `data` array means no offered model is currently ready. The client does not select or
@@ -137,10 +122,17 @@ The harness writes what it learns to `lessons/` (see `lessons/README.md`). Bench
 lessons when requested (`scripts/active/collect_lessons.py`). At runtime the harness talks only to the
 gateway's inference and roster APIs, not to another repo's files or llama-server ports.
 
+The experimental `delegate_task` adapter passes role, minimum or exact context,
+tool profile, and `auto|shared_model|separate_model` strategy to Gateway. It
+never selects a card or computes free VRAM. Its durable child receipt preserves
+Gateway's admission and Orchestration reservation receipts so guardrail and
+model-quality experiments can be reproduced without turning Harness into a
+hardware scheduler.
+
 ## Rules
 
 - The harness talks to models only through the gateway API, never to llama-server ports or the rig.
 - Model routes come from the gateway's prepared roster, never typed into agent code or inferred from
   benchmarking roles. A benchmark model ID used in a test plan is not automatically a ready gateway route.
-- This repo is public: no keys, hostnames beyond the 10.0.0.x rig network, or private project notes.
+- This repo is public: do not add keys, hostnames, network inventory, or private project notes.
 - Keep upstream code out of this repo until the fork exists; record what is used in `UPSTREAM.md`.

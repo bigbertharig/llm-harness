@@ -1,7 +1,7 @@
 # Harness mode: prepared resources, agent-owned work
 
 Date: 2026-10-26
-Status: design direction; the gateway ready-roster API and harness reader are implemented, but no candidate is integrated.
+Status: binding resource-boundary design. The gateway ready-roster API and harness reader are implemented; candidate controllers have been exercised in trials, but none is adopted as the harness runtime. The [test playbook](../HARNESS_TEST_PLAYBOOK.md) records current trial coverage. For gateway ownership and operations, see the [manager contract](https://github.com/bigbertharig/llm-gateway/blob/main/docs/MANAGER.md).
 
 ## Requirement
 
@@ -22,7 +22,7 @@ The harness owns the AI work inside that envelope: agent and tool loops, convers
 4. A changed or unavailable roster is reported to the harness. The harness may pause, fail, or choose another already offered model under its task policy; it does not repair hardware or reload models itself.
 5. The same resource contract should work with an unmodified external harness and a later custom harness. Candidate comparison should test this boundary rather than require each harness to understand the rig.
 
-For subagent creation, the harness may request an `agent_type` from the manager through the separate `agent-routes/resolve` API. The manager may load a cold published profile, then returns a ready route or a bounded failure within five minutes. The harness waits for that result and runs the child only on the returned route; the model-facing tool never names GPUs or model IDs. This explicit preparation request is distinct from an inference call: `X-Require-Ready: true` still prevents accidental cold loads during child work. See the gateway manager contract and `tools/gateway_subagent_mcp.py`.
+For subagent creation, a harness may request an `agent_type` from the manager through the separate `agent-routes/resolve` API. The manager may prepare a cold published profile, then returns a ready route or a bounded failure within five minutes. The harness waits for that result and runs the child only on the returned route; the model-facing tool never names GPUs or model IDs. This explicit preparation request is distinct from inference: `X-Require-Ready: true` still prevents accidental cold loads during child work. The gateway-side API is documented in the [manager contract](https://github.com/bigbertharig/llm-gateway/blob/main/docs/MANAGER.md); this repo's MCP adapter is a trial implementation, not a candidate-runtime integration.
 
 The roster is a runtime offer, not another model registry. Benchmarking remains the source of tested
 model settings and evidence. The gateway imports that knowledge and, together with orchestration,

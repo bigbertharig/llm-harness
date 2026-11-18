@@ -1,14 +1,14 @@
 # Durable sessions and remote attachment (design)
 
-Status: research and evolving design only, 2026-11-06. No implementation or deployment authorized by this document. Owning repo: `llm-harness`. Companion: `llm-gateway/docs/REMOTE_SESSION_ACCESS_DESIGN.md`.
+Status: proposed harness-session design; these session endpoints and event contracts are not implemented. The gateway mobile dashboard is deployed separately and uses gateway-owned saved conversations. See the gateway's [mobile access security model](https://github.com/bigbertharig/llm-gateway/blob/main/docs/REMOTE_ACCESS_SECURITY.md) and [mobile dashboard rollout](https://github.com/bigbertharig/llm-gateway/blob/main/docs/MOBILE_DASHBOARD.md). This document does not authorize or describe a harness-session deployment.
 
 ## Goal and ownership
 
 One operator can start an agent session on the Pi, leave it running, reconnect from a local browser or phone, read its progress, and continue the same conversation. The session must survive a disconnected client and, after recovery, a harness process restart. The harness owns the instructions, context, tool loop, delegation, approvals, and durable conversation record. The gateway owns the authenticated network front door and relays session requests and events. The manager owns model preparation, leases, placement, and readiness. The rig runs models; it never hosts the session UI.
 
-This extends the existing `README.md` and `docs/research/harness_mode_contract_2026-10-26.md` boundaries. It does not depend on a public network endpoint. First test on the Pi and local network; private access from elsewhere is a later gateway/network milestone.
+This extends the repo boundaries in [README](../README.md) and the [harness-mode contract](research/harness_mode_contract_2026-10-26.md). The currently deployed phone route belongs to the gateway and continues gateway-saved conversations; the harness session and event contract below remain proposals.
 
-The Pi's host ingress firewall and key-only SSH were deployed on 2026-11-13, but Tailscale remains disabled and unauthenticated. The future harness session service must bind only to loopback or a private Unix socket. Tailscale Serve should expose a narrow gateway session front door after restrictive tailnet grants are tested; it must not expose the administrative dashboard, manager API, or harness backend. The host firewall drops forwarding, so the rig does not become a tailnet subnet route. A Codex command sandbox does not enforce network policy for host-side MCP processes: each harness tool needs its own server-side capability check and destination policy before remote general-agent work is enabled. See the gateway companion design for the current host rule and activation gate.
+The gateway mobile front door proxies a separate loopback mobile listener; it does not expose the administrative dashboard, manager API, or a harness backend. The rig and workers remain outside the tailnet, with no Tailscale-to-rig forwarding rule. A future harness session service must bind to loopback or a private Unix socket and enforce its own tool permissions. A command sandbox does not enforce network policy for host-side MCP processes, so every tool needs server-side capability and destination checks before broad remote agent work is enabled. Deployment-specific routing and firewall details belong in the gateway's linked operations docs, not in this harness design.
 
 ## Session behavior
 

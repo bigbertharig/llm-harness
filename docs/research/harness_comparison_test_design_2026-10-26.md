@@ -1,13 +1,13 @@
 # Harness comparison: conversation and compaction test design
 
 Date: 2026-10-26
-Status: design only; no runner, fixture, model configuration, or harness integration has been created.
+Status: comparison protocol/design. The full shared runner is still pending; partial short-control, MCP, and search lanes now exist. Current coverage and receipts are summarized in the [test playbook](../HARNESS_TEST_PLAYBOOK.md). This design remains the protocol for the broader fixed-model conversation and compaction comparison.
 
 ## Question
 
 Given the same prepared model and served context window, which harness best preserves a useful conversation, stays within the window, recovers from pressure and interruption, and does so with acceptable prompt-processing cost? This compares the harness with a fixed model, not the model's standalone quality or the rig's placement decisions.
 
-The [harness-mode contract](harness_mode_contract_2026-10-26.md) applies: the comparison never loads, unloads, resizes, or places models. Gateway and orchestration prepare the model and provide a ready roster. The harness uses only the advertised profile(s).
+The [harness-mode contract](harness_mode_contract_2026-10-26.md) applies: the comparison never loads, unloads, resizes, or places models. Gateway and orchestration prepare the model and provide a ready roster. The harness uses only the advertised profile(s). Gateway ownership and the manager API are described in the [gateway manager contract](https://github.com/bigbertharig/llm-gateway/blob/main/docs/MANAGER.md).
 
 ## Two stages
 
