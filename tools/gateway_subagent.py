@@ -38,6 +38,11 @@ WORKSPACE_SERVER = ROOT / 'tools/workspace_read_mcp.py'
 GOOGLE_SERVER = ROOT / 'tools/google_workspace_mcp.py'
 
 
+def _extension_flags(tool_profile: str) -> list[str]:
+    """Enable only the built-in MCP loader for the native Google profile."""
+    return [] if tool_profile == 'google_workspace' else ['--no-extensions']
+
+
 def malformed_child_output(text: str) -> bool:
     """Recognize shared-decoder loops before wasting a repair turn."""
     if not isinstance(text, str):
@@ -274,8 +279,9 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
         workspace.mkdir()
         env = os.environ.copy()
         env['PI_CODING_AGENT_DIR'] = str(agent)
+        extension_flags = _extension_flags(tool_profile)
         command = [str(NODE), str(PI_CLI), '--mode', 'rpc', '--offline',
-                   *tool_flags, '--no-extensions', '--no-skills', '--no-prompt-templates',
+                   *tool_flags, *extension_flags, '--no-skills', '--no-prompt-templates',
                    '--no-context-files', '--session-dir', str(out / 'sessions'),
                    '--system-prompt', child_system_prompt(agent_type, tool_profile),
                    '--provider', 'rig', '--model', child['route']]

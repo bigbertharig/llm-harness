@@ -15,6 +15,11 @@ from subagent_contract import canonical_integer_answer, canonical_final_line, ch
 
 
 class GatewaySubagentRequest(unittest.TestCase):
+    def test_only_google_profile_enables_mcp_extension_loading(self):
+        self.assertEqual(gateway_subagent._extension_flags('google_workspace'), [])
+        self.assertEqual(gateway_subagent._extension_flags('workspace_read'), ['--no-extensions'])
+        self.assertEqual(gateway_subagent._extension_flags('none'), ['--no-extensions'])
+
     def test_repetitive_shared_output_is_rejected(self):
         self.assertTrue(malformed_child_output('<cwd>\n/tmp/work\n</cwd>\n' + '</cwd>\n' * 20))
         self.assertFalse(malformed_child_output('Inspected routes.py and found one fixed-context route.'))
