@@ -1,32 +1,33 @@
 # llm-harness
 
-Research and implementation work on the agent loop around a prepared model route: prompts, context, tools, compaction, sessions, delegation, limits, and recovery. It consumes Gateway routes and does not place models or control GPUs. Candidate harness comparisons and contracts live here; no candidate has been promoted as the Gateway work engine.
+Harness builds and tests the model-use layer around Gateway routes: shared tools, prompts, context, compaction, sessions, delegation, limits, and recovery. Its MCP adapters and test suites run today. Gateway owns model placement and rig control; the dashboard has no selected single harness engine.
 
 ## Project map
 
-This project runs local model and agent workloads across a Pi control host, an isolated GPU rig, and optional CPU workers. The four repositories have different jobs:
+Big Bertha runs across a Pi control host, an isolated GPU rig, and optional CPU workers. Four repositories divide the system's work:
 
 | Repository | Responsibility |
 |---|---|
-| [llm-gateway](https://github.com/bigbertharig/llm-gateway) | Operator-facing dashboard, conversations, model API, tool policy, and work coordination. Its existing Manager code still bridges some hardware operations. |
-| [llm_orchestration](https://github.com/bigbertharig/llm_orchestration) | Hardware-facing admission, placement, reservations, model lifecycle, telemetry, and the existing parallel batch engine. |
-| [benchmarking](https://github.com/bigbertharig/benchmarking) | Measured model and runtime evidence, model registry and roles, load recipes, evaluation suites, and results. |
-| [llm-harness](https://github.com/bigbertharig/llm-harness) | Experimental agent loop, context and session contracts, tool adapters, and harness comparisons. No candidate harness has been promoted as the gateway's work engine. |
+| [llm-gateway](https://github.com/bigbertharig/llm-gateway) | Serves the dashboard, conversations, model API, tool policy, and work coordination. Its Manager also coordinates some model placement and loading. |
+| [llm_orchestration](https://github.com/bigbertharig/llm_orchestration) | Observes and controls rig hardware, enforces admission and reservations, manages runtimes, and runs the legacy brain/worker batch engine. |
+| [benchmarking](https://github.com/bigbertharig/benchmarking) | Measures models and runtimes; publishes the model library, roles, load recipes, evaluation suites, and results. |
+| [llm-harness](https://github.com/bigbertharig/llm-harness) | Builds and tests shared tools, agent loops, context, sessions, delegation, and recovery. Harness selection for dashboard work remains open. |
 
-Benchmarking publishes reviewed evidence; Gateway imports it and presents work to the operator; the rig-side Orchestration layer enforces hardware rules. Harness experiments consume prepared Gateway model routes. Gateway's current Manager still handles some admission and placement. Complete hardware reservations and placement are moving to Orchestration, so the target ownership and current code differ during the migration.
+Benchmarking publishes a validated model library. Gateway imports it, serves model routes, and manages dashboard work. Harness supplies reviewed tool schemas and tests model interactions through Gateway routes. Orchestration enforces rig hardware rules and runs admitted model services. [The work-organization guide](https://github.com/bigbertharig/llm-gateway/blob/main/docs/WORK_ORGANIZATION_DIRECTION.md) tracks the remaining Manager-to-Orchestration migration.
 
-Examples use role placeholders for hostnames, addresses, and mount paths. Replace them from a private site inventory before running commands.
+Private site configuration supplies host addresses, credentials, model files, and mounts. The published examples use role placeholders. For another card mix, run a hardware survey and validate fit, context, concurrency, and speed before offering a load recipe. [Porting guide](https://github.com/bigbertharig/llm-gateway/blob/main/docs/PORTABILITY.md).
 
 ## Read this repo
 
 - [Harness test playbook](docs/HARNESS_TEST_PLAYBOOK.md): how candidate harnesses are compared.
+- [Shared tool families](docs/TOOL_FAMILIES.md): tool ownership, model-neutral adapters, and Chat/Coding grants.
 - [Harness mode contract](docs/research/harness_mode_contract_2026-10-26.md): candidate boundaries and trial modes.
 - [Future durable sessions](docs/REMOTE_SESSIONS_DESIGN.md): proposed session and remote-attachment contract; the deployed phone UI belongs to Gateway.
 - [External sources](EXTERNAL_REPOS.md) and [upstream revisions](UPSTREAM.md): provenance of referenced harnesses.
 
 ## Current deployment
 
-Gateway and the harness trial runners run on the Pi. The trial runners consume prepared model routes and test agent behavior; they do not own the deployed dashboard conversations. Gateway owns those conversations and its authenticated LAN/mobile front doors. Orchestration owns live hardware admission and model lifecycle on the isolated rig. A general durable harness session service remains a design; see [future durable sessions](docs/REMOTE_SESSIONS_DESIGN.md).
+Gateway and the harness trial runners run on the Pi. The trial runners consume prepared model routes and test agent behavior; they do not own the deployed dashboard conversations. Gateway owns those conversations and its authenticated LAN/mobile front doors. Gateway's Manager still coordinates part of admission and loading; the rig-side Orchestration layer enforces hardware rules and runs admitted model services. A general durable harness session service remains a design; see [future durable sessions](docs/REMOTE_SESSIONS_DESIGN.md).
 
 ## Gateway interface for trials
 
