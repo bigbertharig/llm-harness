@@ -100,7 +100,7 @@ python3 mcp_server.py
 ```
 
 For an MCP child process that does not inherit the shell environment, launch
-`python3 mcp_server.py --env-file /home/bryan/llm-harness/.env`. The server
+`python3 mcp_server.py --env-file <harness-checkout>/.env`. The server
 reads literal key/value entries without executing shell code. The optional
 `--providers searxng` narrows that process for a staged comparison; it does
 not remove keys from the private file. The harness comparison runner selects
