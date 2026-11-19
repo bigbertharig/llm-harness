@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "about": "Harness-owned task-to-tool and preferred-helper policy. Candidate promotions require benchmark evidence; Gateway supplies live offers and placement.",
+  "tasks": {
+    "workspace_lookup": {
+      "agent_type": "coding",
+      "tool_profile": "workspace_read",
+      "allowed_tools": [
+        "workspace_read.list_workspace_files",
+        "workspace_read.find_workspace_files",
+        "workspace_read.search_workspace_text",
+        "workspace_read.read_workspace_file"
+      ],
+      "preferred_candidates": [],
+      "allow_cold_load": false,
+      "fallback": "direct_tools"
+    },
+    "public_source_lookup": {
+      "agent_type": "research",
+      "tool_profile": "public_research",
+      "allowed_tools": ["rig_search.search_web", "rig_search.fetch_page"],
+      "preferred_candidates": [],
+      "allow_cold_load": false,
+      "fallback": "direct_tools"
+    }
+  }
+}
