@@ -36,6 +36,16 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertIsNone(parse_public_request(json.dumps({'name': 'mcp__rig_search__delete',
                                                            'arguments': {}}), server, server['tools']))
 
+    def test_tool_bridge_accepts_bounded_function_syntax_from_local_models(self):
+        server = {'name': 'workspace_read', 'tools': ['search_workspace_text', 'read_workspace_file']}
+        calls = ('search_workspace_text({"query":"main agent"})\n'
+                 'read_workspace_file({"path":"README.md","start_line":1,"max_lines":40})')
+        self.assertEqual(parse_public_request(calls, server, server['tools']),
+                         ('search_workspace_text', {'query': 'main agent'}))
+        self.assertIsNone(parse_public_request(
+            'search_workspace_text({"query":"ok"})\ndelete_file({"path":"README.md"})',
+            server, server['tools']))
+
     def test_public_tool_bridge_discovers_and_calls_stdio_server(self):
         fixture = Path(__file__).resolve().parents[1] / 'tools/fixtures/diagnostics_mcp.mjs'
         with tempfile.TemporaryDirectory() as temp:
@@ -49,6 +59,8 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertIn('coding child agent', child_system_prompt('coding'))
         self.assertIn('research child agent', child_system_prompt('research'))
         self.assertIn('search_web', child_system_prompt('research', 'public_research'))
+        self.assertIn('model-independent google_workspace',
+                      child_system_prompt('research', 'google_workspace'))
         self.assertIn('no tools', child_system_prompt('research'))
         self.assertEqual(canonical_integer_answer('42.0'), '42')
         self.assertEqual(canonical_integer_answer('42'), '42')
@@ -142,6 +154,27 @@ class GatewaySubagentRequest(unittest.TestCase):
                 run_child(parent_id='cloud/codex', agent_type='coding', prompt='review',
                           out=root / 'child', gateway='http://127.0.0.1:8080',
                           tool_profile='workspace_read')
+
+    def test_google_profile_uses_same_catalog_for_any_local_model(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = root / 'agent'
+            agent.mkdir()
+            registry = root / 'registry.json'
+            registry.write_text(json.dumps({'surfaces': {'google_workspace': {
+                'status': 'dashboard', 'tools': [
+                    {'name': 'search_mail', 'approval': 'automatic'},
+                    {'name': 'send_email', 'approval': 'automatic'}]}}}))
+            server = root / 'google_workspace_mcp.py'
+            server.write_text('')
+            with patch.object(gateway_subagent, 'TOOL_REGISTRY', registry), \
+                 patch.object(gateway_subagent, 'GOOGLE_SERVER', server):
+                flags = gateway_subagent._child_tools(agent, root, 'google_workspace')
+            self.assertEqual(flags, ['--no-tools', '--no-mcp'])
+            config = json.loads((agent / 'mcp.json').read_text())['mcpServers']['google_workspace']
+            self.assertEqual(config['args'], [str(server)])
+            self.assertEqual(config['toolExposure'], {
+                'search_mail': 'direct', 'send_email': 'direct'})
 
     def test_cloud_parent_can_request_shared_35b_without_gpu_selection(self):
         class Reply:
@@ -317,7 +350,7 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertEqual(tool['inputSchema']['properties']['candidate_id']['maxLength'], 80)
         self.assertIn('loaded shared model', tool['description'])
         self.assertEqual(tool['inputSchema']['properties']['tool_profile']['enum'],
-                         ['none', 'public_research'])
+                         ['none', 'public_research', 'google_workspace'])
 
     def test_cloud_parent_with_workspace_exposes_read_profile(self):
         server = Path(__file__).resolve().parents[1] / 'tools/gateway_subagent_mcp.py'

@@ -34,7 +34,7 @@
       ]
     },
     "google_workspace": {
-      "purpose": "Read bounded mail and Drive text from the dedicated rig account through Gateway-owned OAuth",
+      "purpose": "Read and perform explicit, receipted writes in the dedicated rig Gmail, Drive, Docs, and Sheets account through Gateway-owned OAuth",
       "origin": "external",
       "family": "google",
       "source_bundle": "google",
@@ -48,11 +48,47 @@
           "approval": "automatic"
         },
         {
+          "name": "send_email",
+          "approval": "automatic"
+        },
+        {
           "name": "search_drive",
           "approval": "automatic"
         },
         {
           "name": "read_drive_text",
+          "approval": "automatic"
+        },
+        {
+          "name": "create_drive_folder",
+          "approval": "automatic"
+        },
+        {
+          "name": "upload_drive_text",
+          "approval": "automatic"
+        },
+        {
+          "name": "create_google_doc",
+          "approval": "automatic"
+        },
+        {
+          "name": "append_google_doc_text",
+          "approval": "automatic"
+        },
+        {
+          "name": "create_google_sheet",
+          "approval": "automatic"
+        },
+        {
+          "name": "read_google_sheet",
+          "approval": "automatic"
+        },
+        {
+          "name": "update_google_sheet",
+          "approval": "automatic"
+        },
+        {
+          "name": "append_google_sheet_rows",
           "approval": "automatic"
         }
       ]

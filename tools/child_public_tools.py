@@ -2,6 +2,7 @@
 
 import json
 import queue
+import re
 import subprocess
 import threading
 import time
@@ -16,7 +17,29 @@ def parse_request(answer, server, targets):
     try:
         packet = json.loads(raw)
     except (TypeError, ValueError):
-        return None
+        # Some local models emit conventional function syntax instead of the
+        # requested JSON envelope. Accept it only when the entire response is
+        # one or more allowlisted calls, then execute the first and feed its
+        # result back before considering another call.
+        lines = [line.strip() for line in raw.splitlines() if line.strip()]
+        calls = []
+        for line in lines:
+            match = re.fullmatch(r'([A-Za-z_][A-Za-z0-9_]*)\s*\((\{.*\})\)\s*;?', line)
+            if not match:
+                return None
+            try:
+                arguments = json.loads(match.group(2))
+            except ValueError:
+                return None
+            if not isinstance(arguments, dict):
+                return None
+            calls.append((match.group(1), arguments))
+        if not calls:
+            return None
+        allowed_names = {'mcp__' + server['name'] + '__' + name: name for name in targets}
+        normalized = [(allowed_names.get(name) or (name if name in targets else None), arguments)
+                      for name, arguments in calls]
+        return normalized[0] if all(name for name, _ in normalized) else None
     if not isinstance(packet, dict):
         return None
     allowed = {'mcp__' + server['name'] + '__' + name: name for name in targets}

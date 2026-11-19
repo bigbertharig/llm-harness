@@ -64,14 +64,15 @@ TOOL = {'name': 'delegate_task',
             'worker_strategy': {'type': 'string',
                                 'enum': ['auto', 'shared_model', 'separate_model'],
                                 'description': 'auto lets Gateway choose; shared_model requires another context in the loaded model; separate_model requests an independently loaded small model.'},
-            'tool_profile': {'type': 'string', 'enum': ['none', 'public_research', 'workspace_read'],
-                             'description': 'Use workspace_read for repository evidence or public_research for public web evidence.'}},
+            'tool_profile': {'type': 'string', 'enum': ['none', 'public_research', 'workspace_read', 'google_workspace'],
+                             'description': 'Use workspace_read for repository evidence, public_research for public web evidence, or google_workspace for the dedicated rig account.'}},
             'required': ['agent_type', 'task'], 'additionalProperties': False}}
 if config.cloud_parent:
     TOOL['description'] = ('Spawn one bounded coding or research agent on the loaded shared model when available. '
                            'The manager attaches a new chat and chooses its GPU. Use list_local_agents before '
                            'requesting a specific candidate_id; omit it to use the loaded shared model. '
                            'Set tool_profile=public_research to give the child public search and page fetch; '
+                           'Set tool_profile=google_workspace for the generic Gmail, Drive, Docs, and Sheets tools; '
                            'Set tool_profile=workspace_read to let the child list and read only the selected '
                            'coding workspace. Otherwise it has no tools. Verify its answer.')
 else:
@@ -80,7 +81,7 @@ else:
                            'Spawn one bounded child chat of the already-loaded shared model. '
                            'The manager chooses an available worker; no model candidate or GPU selection is needed.')
 if not config.workspace_root:
-    TOOL['inputSchema']['properties']['tool_profile']['enum'] = ['none', 'public_research']
+    TOOL['inputSchema']['properties']['tool_profile']['enum'] = ['none', 'public_research', 'google_workspace']
 if config.coding_only:
     TOOL['inputSchema']['properties']['tool_profile']['enum'] = ['none', 'workspace_read']
     TOOL['description'] = ('Give one bounded coding or research task to a local GPU child. '

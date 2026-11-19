@@ -35,6 +35,7 @@ BASE_SETTINGS = ROOT / 'tools/comparison_fixtures/pi_settings.json'
 TOOL_REGISTRY = ROOT / 'tools/tool_registry.json'
 SEARCH_SERVER = ROOT / 'mcp_servers/rig_search/mcp_server.py'
 WORKSPACE_SERVER = ROOT / 'tools/workspace_read_mcp.py'
+GOOGLE_SERVER = ROOT / 'tools/google_workspace_mcp.py'
 
 
 def malformed_child_output(text: str) -> bool:
@@ -54,7 +55,7 @@ def _validate_child_tools(tool_profile: str, workspace_root: Path | None = None)
     """Fail before route allocation when a requested child tool surface is unavailable."""
     if tool_profile == 'none':
         return
-    if tool_profile not in ('public_research', 'workspace_read'):
+    if tool_profile not in ('public_research', 'workspace_read', 'google_workspace'):
         raise ValueError('unknown child tool profile')
     registry = json.loads(TOOL_REGISTRY.read_text())
     if tool_profile == 'public_research':
@@ -67,7 +68,7 @@ def _validate_child_tools(tool_profile: str, workspace_root: Path | None = None)
         env_file = Path(os.environ.get('RIG_SEARCH_ENV_FILE') or ROOT / '.env').resolve()
         if not SEARCH_SERVER.is_file() or not env_file.is_file():
             raise ValueError('public research MCP server or provider config is unavailable')
-    else:
+    elif tool_profile == 'workspace_read':
         names = ('list_workspace_files', 'find_workspace_files', 'read_workspace_file',
                  'search_workspace_text')
         surface = registry['surfaces']['workspace_read']
@@ -76,6 +77,11 @@ def _validate_child_tools(tool_profile: str, workspace_root: Path | None = None)
                 workspace_root is None or not workspace_root.is_dir() or
                 not WORKSPACE_SERVER.is_file()):
             raise ValueError('workspace read tools or selected root are unavailable')
+    else:
+        surface = registry['surfaces']['google_workspace']
+        approved = {row['name'] for row in surface['tools'] if row.get('approval') == 'automatic'}
+        if surface.get('status') != 'dashboard' or not approved or not GOOGLE_SERVER.is_file():
+            raise ValueError('Google Workspace tools are not approved or unavailable')
 
 
 def _child_tools(agent: Path, out: Path, tool_profile: str,
@@ -91,11 +97,16 @@ def _child_tools(agent: Path, out: Path, tool_profile: str,
         args = [str(SEARCH_SERVER), str(out / 'search_events.jsonl'),
                 '--env-file', str(env_file), '--endpoint', 'http://127.0.0.1:8888',
                 '--providers', 'searxng']
-    else:
+    elif tool_profile == 'workspace_read':
         server_name = 'workspace_read'
         names = ('list_workspace_files', 'find_workspace_files', 'read_workspace_file',
                  'search_workspace_text')
         args = [str(WORKSPACE_SERVER), '--root', str(workspace_root)]
+    else:
+        server_name = 'google_workspace'
+        surface = json.loads(TOOL_REGISTRY.read_text())['surfaces'][server_name]
+        names = tuple(row['name'] for row in surface['tools'] if row.get('approval') == 'automatic')
+        args = [str(GOOGLE_SERVER)]
     (agent / 'mcp.json').write_text(json.dumps({'mcpServers': {server_name: {
         'command': sys.executable,
         'args': args,
@@ -205,7 +216,7 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
         raise ValueError('unknown worker strategy')
     if worker_strategy == 'separate_model' and candidate_id is not None:
         raise ValueError('candidate_id cannot be combined with separate_model')
-    if tool_profile not in ('none', 'public_research', 'workspace_read'):
+    if tool_profile not in ('none', 'public_research', 'workspace_read', 'google_workspace'):
         raise ValueError('unknown child tool profile')
     if tool_profile == 'workspace_read':
         if workspace_root is None:
