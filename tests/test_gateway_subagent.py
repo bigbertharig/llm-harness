@@ -170,7 +170,8 @@ class GatewaySubagentRequest(unittest.TestCase):
             with patch.object(gateway_subagent, 'TOOL_REGISTRY', registry), \
                  patch.object(gateway_subagent, 'GOOGLE_SERVER', server):
                 flags = gateway_subagent._child_tools(agent, root, 'google_workspace')
-            self.assertEqual(flags, ['--no-tools', '--no-mcp'])
+            self.assertEqual(flags, ['--no-builtin-tools', '--tools',
+                                     'mcp__google_workspace__*'])
             config = json.loads((agent / 'mcp.json').read_text())['mcpServers']['google_workspace']
             self.assertEqual(config['args'], [str(server)])
             self.assertEqual(config['toolExposure'], {

@@ -115,6 +115,12 @@ def _child_tools(agent: Path, out: Path, tool_profile: str,
     }}}, indent=2))
     # The parent bridge dispatches each validated call and can enforce its cap
     # before execution. Pi's native tool events arrive after dispatch.
+    if tool_profile == 'google_workspace':
+        # Google operations carry their own strict schemas, explicit write
+        # confirmation, idempotency keys, and durable Gateway receipts. Expose
+        # that reviewed MCP server natively so every model sees real tools,
+        # while keeping Pi's shell and filesystem tools disabled.
+        return ['--no-builtin-tools', '--tools', 'mcp__google_workspace__*']
     return ['--no-tools', '--no-mcp']
 
 
