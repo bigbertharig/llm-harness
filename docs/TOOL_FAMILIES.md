@@ -11,6 +11,10 @@ The Harness registry (`tools/tool_registry.json`) is the source of truth for too
 | `github` | `github_public` | Public, read-only repository metadata, directory paths, source text, and filename lookup at a pinned commit. Chat only. Local Git inspection remains in `workspace_git` for Coding; it does not access GitHub. |
 | `codex`, `claude` | None in the shared registry | Provider adapters own authentication, inference/session handling, and provider-only capabilities. Their built-in tools are not assumed to work for local models. |
 
+## Host control grant
+
+The `local_control` and `private_control` MCP servers execute commands as the Pi service user, including its available sudo and SSH access. A conversation grant exposes the relevant command tool without a separate confirmation for each command. `local_control` has named Pi, rig, and worker targets; `private_control` reaches trusted hosts in the configured private subnet. The host tool now loads named targets, a private CIDR, and the SSH user from `HOST_CONTROL_CONFIG_PATH` or `~/.config/llm-harness/host-control.json`; see `tools/host_control_config.example.json`. A missing or invalid config fails closed. The conversation grant is the intended permission boundary for the trusted local network; commands do not request another approval. Keep remote browser and mobile grants separate, and treat tool output as untrusted data.
+
 ## Model-neutral tools
 
 Gateway passes Harness MCP schemas and calls to local models and to its Claude API adapter. Codex dashboard sessions receive the same Harness MCP servers. The model sees the same tool name and argument contract. `google_workspace` is model-neutral even though Google remains its provider family: Qwen, Nemotron, smaller local workers, Codex, and configured API models all use the same operation names and Gateway receipts. `workspace_read` and `workspace_git` provide basic local discovery/read and Git status/log/diff only in Coding. Chat gets public GitHub reads and the configured Google account without local workspace access.

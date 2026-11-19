@@ -1,6 +1,6 @@
 # llm-harness
 
-Harness builds and tests the model-use layer around Gateway routes: shared tools, prompts, context, compaction, sessions, delegation, limits, and recovery. Its MCP adapters and test suites run today. Gateway owns model placement and rig control; the dashboard has no selected single harness engine.
+Harness builds and tests the model-use layer around Gateway routes: shared tools, prompts, context, compaction, sessions, delegation, limits, and recovery. Its MCP adapters and test suites run today. Gateway Manager coordinates model choice and some placement; the rig enforces admission and hardware rules. The project-owned Harness is the integration target; its durable agent loop is still under construction.
 
 ## Project map
 
@@ -11,7 +11,7 @@ Big Bertha runs across a Pi control host, an isolated GPU rig, and optional CPU 
 | [llm-gateway](https://github.com/bigbertharig/llm-gateway) | Serves the dashboard, conversations, model API, tool policy, and work coordination. Its Manager also coordinates some model placement and loading. |
 | [llm_orchestration](https://github.com/bigbertharig/llm_orchestration) | Observes and controls rig hardware, enforces admission and reservations, manages runtimes, and runs the legacy brain/worker batch engine. |
 | [benchmarking](https://github.com/bigbertharig/benchmarking) | Measures models and runtimes; publishes the model library, roles, load recipes, evaluation suites, and results. |
-| [llm-harness](https://github.com/bigbertharig/llm-harness) | Builds and tests shared tools, agent loops, context, sessions, delegation, and recovery. Harness selection for dashboard work remains open. |
+| [llm-harness](https://github.com/bigbertharig/llm-harness) | Builds the project-owned tool and agent layer. External harnesses supply comparison evidence and features to adapt. |
 
 Benchmarking publishes a validated model library. Gateway imports it, serves model routes, and manages dashboard work. Harness supplies reviewed tool schemas and tests model interactions through Gateway routes. Orchestration enforces rig hardware rules and runs admitted model services. [The work-organization guide](https://github.com/bigbertharig/llm-gateway/blob/main/docs/WORK_ORGANIZATION_DIRECTION.md) tracks the remaining Manager-to-Orchestration migration.
 
@@ -19,6 +19,7 @@ Private site configuration supplies host addresses, credentials, model files, an
 
 ## Read this repo
 
+- [Own Harness direction](docs/OWN_HARNESS_DIRECTION.md): how tested external behavior becomes shared project code.
 - [Harness test playbook](docs/HARNESS_TEST_PLAYBOOK.md): how candidate harnesses are compared.
 - [Shared tool families](docs/TOOL_FAMILIES.md): tool ownership, model-neutral adapters, and Chat/Coding grants.
 - [Harness mode contract](docs/research/harness_mode_contract_2026-10-26.md): candidate boundaries and trial modes.
@@ -91,7 +92,9 @@ The research names some files that have changed since: `model_task_library.json`
 roles replaced them), the gateway moved from the rig to the Pi on 2026-10-17, and the `worker.py`
 `max_tokens` fix is done (the cap comes from the model library).
 
-## Backlog
+## Earlier harness research backlog
+
+The following list records the original DeepSeek Harness exploration. It is historical research. Current development adapts validated features from all six candidates into the project-owned Harness; a DeepSeek fork is not the integration plan.
 
 1. **Fork and prune DeepSeek Harness** (research summary section 6): remove telemetry, confirm the
    build, add a `rig` profile with the gateway route and one chat preset.
@@ -119,7 +122,8 @@ The repos keep their own responsibilities. Benchmarking publishes tested model k
 existing importer takes in that knowledge and publishes model routes. Gateway and orchestration prepare
 the rig and report which routes are actually ready. The harness consumes that prepared roster through a
 gateway API. It needs model identity, served context and output limits, tool-call capability, and
-availability; it does not need a separate copy of benchmarking's model library.
+availability. Its hash-verified model-catalog snapshot supports offline planning and trials; live
+serving decisions use Gateway routes and the ready roster, not that snapshot.
 
 The harness writes what it learns to `lessons/` (see `lessons/README.md`). Benchmarking copies those
 lessons when requested (`scripts/active/collect_lessons.py`). At runtime the harness talks only to the
