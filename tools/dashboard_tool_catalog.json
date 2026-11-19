@@ -3,6 +3,9 @@
   "servers": {
     "rig_search": {
       "purpose": "Search public sources and fetch selected public pages on Pi CPUs",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal",
       "tools": [
         {
           "name": "search_web",
@@ -16,6 +19,9 @@
     },
     "local_agents": {
       "purpose": "Discover agent roles and delegate bounded tasks from cloud or local models",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal",
       "tools": [
         {
           "name": "list_local_agents",
@@ -27,8 +33,47 @@
         }
       ]
     },
+    "google_workspace": {
+      "purpose": "Read bounded mail and Drive text from the dedicated rig account through Gateway-owned OAuth",
+      "origin": "external",
+      "family": "google",
+      "source_bundle": "google",
+      "tools": [
+        {
+          "name": "search_mail",
+          "approval": "automatic"
+        },
+        {
+          "name": "read_mail",
+          "approval": "automatic"
+        },
+        {
+          "name": "search_drive",
+          "approval": "automatic"
+        },
+        {
+          "name": "read_drive_text",
+          "approval": "automatic"
+        }
+      ]
+    },
+    "gateway_reset": {
+      "purpose": "Durably restart the dashboard gateway and resume the invoking saved Codex conversation",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal",
+      "tools": [
+        {
+          "name": "restart_gateway_and_resume",
+          "approval": "automatic"
+        }
+      ]
+    },
     "rig_info": {
       "purpose": "Read-only rig, model, benchmark, and orchestration status through gateway APIs",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal",
       "tools": [
         {
           "name": "get_rig_status",
@@ -52,6 +97,98 @@
         },
         {
           "name": "get_orchestration_activity",
+          "approval": "automatic"
+        }
+      ]
+    },
+    "workspace_read": {
+      "purpose": "Bounded read-only access to the selected Coding workspace",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal",
+      "tools": [
+        {
+          "name": "list_workspace_files",
+          "approval": "automatic"
+        },
+        {
+          "name": "find_workspace_files",
+          "approval": "automatic"
+        },
+        {
+          "name": "read_workspace_file",
+          "approval": "automatic"
+        },
+        {
+          "name": "search_workspace_text",
+          "approval": "automatic"
+        }
+      ]
+    },
+    "local_control": {
+      "purpose": "Broad Pi, rig, and named CPU worker commands for trusted local models",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal",
+      "tools": [
+        {
+          "name": "run_local_command",
+          "approval": "automatic"
+        }
+      ]
+    },
+    "private_control": {
+      "purpose": "SSH commands to other trusted 10.0.0.0/24 hosts in Full mode",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal",
+      "tools": [
+        {
+          "name": "run_private_command",
+          "approval": "automatic"
+        }
+      ]
+    },
+    "workspace_git": {
+      "purpose": "Read bounded Git status, log, and per-file diff in the selected Coding workspace",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal",
+      "tools": [
+        {
+          "name": "get_workspace_git_status",
+          "approval": "automatic"
+        },
+        {
+          "name": "get_workspace_git_log",
+          "approval": "automatic"
+        },
+        {
+          "name": "get_workspace_git_diff",
+          "approval": "automatic"
+        }
+      ]
+    },
+    "github_public": {
+      "purpose": "Read bounded public GitHub repository metadata, tree paths, and source files at a pinned commit",
+      "origin": "external",
+      "family": "github",
+      "source_bundle": "github",
+      "tools": [
+        {
+          "name": "inspect_github_repo",
+          "approval": "automatic"
+        },
+        {
+          "name": "list_github_directory",
+          "approval": "automatic"
+        },
+        {
+          "name": "find_github_files",
+          "approval": "automatic"
+        },
+        {
+          "name": "read_github_file",
           "approval": "automatic"
         }
       ]

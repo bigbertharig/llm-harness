@@ -40,3 +40,13 @@ def test_mcp_fetch_page_returns_bounded_cpu_text():
     fetch.assert_called_once_with("https://example.org/a", 1000)
     assert mcp.tool_call({"name": "fetch_page", "arguments": {
         "url": "https://example.org/a", "max_chars": True}}, "")["isError"]
+
+
+def test_page_reader_retains_bounded_same_site_links():
+    page = page_fetch._Text("https://example.org/start")
+    page.feed('<nav><a href="/about">About</a><a href="https://other.org/">Outside</a>'
+              '<a href="/projects"><strong>Projects</strong></a></nav>')
+    assert page.links == [
+        {"url": "https://example.org/about", "label": "About"},
+        {"url": "https://example.org/projects", "label": "Projects"},
+    ]

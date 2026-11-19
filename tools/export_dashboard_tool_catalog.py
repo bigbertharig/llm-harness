@@ -16,6 +16,12 @@ OUTPUT = ROOT / "dashboard_tool_catalog.json"
 def build(registry: dict) -> dict:
     if registry.get("schema_version") != 1 or not isinstance(registry.get("surfaces"), dict):
         raise ValueError("unsupported tool registry")
+    bundles = registry.get("bundles")
+    if not isinstance(bundles, dict) or "internal" not in bundles:
+        raise ValueError("missing source bundles")
+    for bundle, details in bundles.items():
+        if not bundle.isidentifier() or not isinstance(details, dict) or details.get("kind") not in {"shared", "provider"}:
+            raise ValueError(f"invalid source bundle: {bundle}")
     servers = {}
     all_names = set()
     for name, surface in registry["surfaces"].items():
@@ -23,6 +29,14 @@ def build(registry: dict) -> dict:
             raise ValueError(f"invalid tool surface: {name}")
         if surface.get("category") not in {"search", "local_info", "delegate", "external", "diagnostics"}:
             raise ValueError(f"invalid tool category: {name}")
+        if surface.get("origin") not in {"internal", "external"}:
+            raise ValueError(f"invalid tool origin: {name}")
+        family = surface.get("family")
+        if not isinstance(family, str) or family not in bundles:
+            raise ValueError(f"invalid tool family: {name}")
+        source_bundle = surface.get("source_bundle")
+        if not isinstance(source_bundle, str) or source_bundle not in bundles:
+            raise ValueError(f"invalid tool source bundle: {name}")
         if surface.get("status") not in {"dashboard", "candidate", "prototype", "external_observed", "external_live_discovered",
                                          "discovery_pending"}:
             raise ValueError(f"invalid tool status: {name}")
@@ -47,7 +61,8 @@ def build(registry: dict) -> dict:
         enabled = [tool for tool in tools if "approval" in tool]
         if not enabled:
             raise ValueError(f"no dashboard tools: {name}")
-        servers[name] = {"purpose": surface["purpose"], "tools": enabled}
+        servers[name] = {"purpose": surface["purpose"], "origin": surface["origin"],
+                         "family": family, "source_bundle": source_bundle, "tools": enabled}
     if not servers:
         raise ValueError("no dashboard tools")
     return {"schema_version": 1, "servers": servers}

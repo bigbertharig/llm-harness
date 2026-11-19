@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "offline": {
+    "command": ["python3", "-m", "pytest", "-q", "tests"],
+    "test_directory": "tests"
+  },
+  "live_lanes": [
+    {"id": "ready_roster_preflight", "runner": "tools/live_preflight.py"},
+    {"id": "short_control", "runner": "tools/comparison_short_control.py", "receipt_audit": "tools/audit_short_control.py"},
+    {"id": "tool_use", "runner": "tools/comparison_tool_use.py"},
+    {"id": "mcp_matrix", "runner": "tools/comparison_mcp_matrix.py"},
+    {"id": "web_search", "runner": "tools/comparison_web_search.py"},
+    {"id": "web_research", "runner": "tools/comparison_web_research.py"},
+    {"id": "local_rag", "runner": "tools/comparison_local_rag.py"},
+    {"id": "subagents", "runner": "tools/comparison_subagents.py"}
+  ]
+}

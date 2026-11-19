@@ -1,13 +1,14 @@
 # Harness tool inventory
 
-Updated 2026-11-15. Ownership is the top-level split: **internal** means a tool implemented and maintained by the GPU Rig harness; **external** means a tool served by another provider, including DaedalMap. Availability is separate from ownership. `tools/tool_registry.json` is the integration inventory, `tools/tool_fixtures.json` records the diagnostics test server, and `tools/dashboard_tool_catalog.json` is the generated projection currently offered in gateway chat. Prototype tools under Search and Delegate are recorded with their parent surface and are omitted from the dashboard projection.
+Updated 2026-11-18. [Tool families](TOOL_FAMILIES.md) defines the current organization and promotion path. Ownership, origin, family, and availability are separate fields in `tools/tool_registry.json`. `tools/tool_fixtures.json` records the diagnostics test server, and `tools/dashboard_tool_catalog.json` is the generated projection. Gateway then applies separate Chat and Coding allowlists. The detailed notes below include historical test evidence; the registry controls current availability.
 
 | Ownership | Surfaces | Tool entries | Currently in dashboard chat |
 | --- | ---: | ---: | ---: |
-| Internal, including diagnostics fixtures | 5 | 21 | 11 |
-| External | 4 | 19 | 0 |
+| Internal rig tools | 9 | 24 | 20 |
+| External integrations | 6 | 27 | 4 public GitHub tools; 4 Google tools when OAuth is configured |
+| Diagnostics fixture | 1 | 6 | 0 |
 
-All 21 internal tool names are distinct. Prototype tools are available to tests, while the seven rig information tools and four operational tools are offered in dashboard chat.
+All 57 registry and fixture names are distinct. Prototype tools are available to tests. Dashboard export contains 28 enabled names across ten surfaces; Gateway narrows these by mode. Google tools require Gateway OAuth configuration; the dedicated Pi account was authorized on 2026-11-18.
 
 ## Internal tools
 
@@ -15,7 +16,11 @@ All 21 internal tool names are distinct. Prototype tools are available to tests,
 | --- | --- | --- |
 | `rig_search` | Dashboard + prototypes | `search_web`, `fetch_page`; prototype `search_fixture_web`, `fetch_fixture_page` |
 | `local_agents` | Dashboard + prototype | `list_local_agents`, `delegate_task`; prototype `delegate_fixture_task` |
-| `rig_info` | Dashboard | `get_rig_status`, `check_rig_heartbeats`, `get_model_status`, `get_benchmark_status`, `get_orchestration_status`, `get_orchestration_diagnostics`, `get_orchestration_activity` |
+| `rig_info` | Dashboard | `get_rig_status`, `get_model_status`, `get_benchmark_status`, `get_orchestration_status`, `get_orchestration_diagnostics`, `get_orchestration_activity` |
+| `workspace_read` | Dashboard Coding and delegated coding children | `list_workspace_files`, `find_workspace_files`, `read_workspace_file`, `search_workspace_text` |
+| `workspace_git` | Dashboard Coding | `get_workspace_git_status`, `get_workspace_git_log`, `get_workspace_git_diff` |
+| `google_workspace` | Dashboard Chat, auth gated | `search_mail`, `read_mail`, `search_drive`, `read_drive_text` |
+| `github_public` | Dashboard Chat | `inspect_github_repo`, `list_github_directory`, `find_github_files`, `read_github_file` |
 | `local_rag_fixture` | Prototype | `search_passages` |
 | `diagnostics` | Test fixture | `read_marker`, `read_structured_marker`, `calculate_sum`, `calculate_product`, `get_entry`, `get_nested_entry` |
 
@@ -33,6 +38,8 @@ The first two are the live public search tools. The prototype tools run against 
 
 `search_passages` is a Chroma RAG fixture over an isolated eight-passage corpus. It tests passage filters and citation IDs. It is distinct from public web search and is not enabled in dashboard chat. The 2026-11-05 comparison passed 23/24 adjudicated cases; that small fixture does not establish a production local index. Its prototype record lives in the unified registry so it can follow the same review path when a real local index is ready.
 
+`workspace_read` serves only an explicitly selected Coding workspace and is exported for Coding turns. Chat does not receive it. `workspace_git` has the same selected-workspace boundary and offers only bounded read-only Git inspection.
+
 ### Delegate
 
 | Surface | Tool | Job |
@@ -43,9 +50,15 @@ The first two are the live public search tools. The prototype tools run against 
 
 Cloud Codex and local model parents use the same `delegate_task` name and argument schema. The MCP launch supplies the parent route and permitted child candidates; the gateway admits the child and orchestration places its model. The prototype task tests that path with a fixed question; it is not offered in dashboard chat.
 
+`delegate_task` accepts `tool_profile`, plus optional `acceptance_criteria` and `verification` strings that become labeled sections of the child assignment. The default `none` keeps the child isolated from tools. `public_research` gives it only `search_web` and `fetch_page` from this registry's approved `rig_search` surface. The harness dispatches validated JSON requests through its bounded MCP bridge, allowing up to twelve calls while retaining per-result and cumulative output budgets, a two-child concurrency cap, and cancellation/cleanup on parent termination. Pi native tool access is disabled for these children because its tool-start event arrives after dispatch. The child uses the SearXNG provider subset, has no shell, file, or delegation tools, and keeps bounded token, time, and route limits. Public queries leave the rig; do not use this profile for private task text. `workspace_read` gives a coding child only the four read-only workspace tools when the parent Codex session has a selected workspace; it cannot use shell, edit, or delegation tools. Text search accepts either a file or directory and reports source line numbers; reads accept bounded `start_line` and `max_lines` ranges so a child can inspect the relevant section without consuming its context on a truncated full-file read. Hidden paths, symlinks, traversal, large files, and oversized results are blocked by the MCP server. Workspace files are opened through no-follow descriptors so a path swap cannot redirect a read outside the selected root. The bridge requires an allowlisted name and the server validates arguments. The receipt records the tool mode and calls. The 2026-11-15 live shared-35B child smoke executed both search and page fetch with this text bridge and cited the official Python 3.13 page. A later dashboard Codex delegation recorded one child public-search call and its receipt in chat activity. Native tool-call reliability remains a benchmarking topic.
+
+The 2026-11-15 workspace-read child smoke found and read `tools/subagent_contract.py`, then returned the two child role names with a relative path. A dashboard Codex delegation repeated that task and saved a completed MCP activity item with two child tool calls and receipt `371b4b71535a4f1e99bd366f984ceea3`. After native dispatch was disabled, a second direct smoke (`results/child_workspace_read_smoke_20261115d`) again completed two workspace tool calls, returned the right roles, and released the child. The shared 35B model used the text bridge in these runs. The bridge accepts exact allowlisted `name`/`tool` JSON envelopes and single-key tool envelopes, with no prose parsing; the MCP server validates the arguments.
+
+Targeted read results distinguish `requested_range_complete` from `more_lines_after`. A child should not page adjacent ranges merely because the source file continues after a requested range that was delivered successfully.
+
 ### Rig information
 
-`rig_info` reads the gateway dashboard's read-only endpoints. `get_rig_status` returns a bounded GPU, profile, claim, and guard summary. `check_rig_heartbeats` reports controller heartbeat age and staleness plus rig reachability. `get_model_status` summarizes the imported model library. `get_benchmark_status` summarizes active lanes and recent campaigns. `get_orchestration_status`, `get_orchestration_diagnostics`, and `get_orchestration_activity` read the same current-state and job activity APIs as the orchestration dashboard tab. Activity pages follow one active or last-day batch journal by cursor. These tools do not run dashboard control actions.
+`rig_info` reads the gateway dashboard's read-only endpoints. `get_rig_status` returns a bounded GPU, profile, claim, and guard summary. `get_model_status` summarizes the imported model library. `get_benchmark_status` summarizes active lanes and recent campaigns. `get_orchestration_status`, `get_orchestration_diagnostics`, and `get_orchestration_activity` read the same current-state and job activity APIs as the orchestration dashboard tab. Activity pages follow one active or last-day batch journal by cursor. These tools do not run dashboard control actions.
 
 Live campaign testing on 2026-11-15 identified one candidate for this surface:
 `check_campaign_readiness`. It should combine the rig safety guard, selected-card
@@ -81,7 +94,7 @@ The current hosted server is `https://app.daedalmap.com/mcp?registry=site`, with
 
 ## Counts and handoff
 
-The unified registry has **8 surfaces and 34 named entries**: three dashboard surfaces with eleven offered tools, three search/delegation prototype tools under their owning surfaces, one local-information prototype, DaedalMap with 16 live-discovered tools, and three other external observations. The diagnostics fixture adds **1 surface and 6 tools**. Thus the current inventory describes **9 surfaces and 40 distinct tool names**. The original 17/59 count included retired duplicate harness surfaces and dated DaedalMap names.
+The unified registry currently has **15 surfaces and 51 named entries**. The diagnostics fixture adds **1 surface and 6 tools**. The dashboard projection enables **28 tools across 10 surfaces**, subject to Gateway mode and credential gates. Earlier counts described the 2026-11-15 snapshot and are superseded by the registry.
 
 Harness exports the currently enabled projection with `python3 tools/export_dashboard_tool_catalog.py sync`. Gateway and benchmarking each use their own `sync_harness_tools.py --source ... what-new|sync|check` importer and keep a hash-pinned local snapshot. Gateway runtime reads its snapshot and the MCP server's live `tools/list` argument schema. Benchmarking uses the snapshot as a test input and records canonical model ID, served route, catalog hash, tool name, argument validity, result, and answer quality. Orchestration receives model load instructions and needs no tool catalog.
 

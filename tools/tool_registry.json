@@ -35,7 +35,10 @@
         "firecrawl",
         "serpapi"
       ],
-      "category": "search"
+      "category": "search",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal"
     },
     "local_agents": {
       "owner": "llm-harness",
@@ -57,7 +60,54 @@
           "implementation": "tools/fixtures/subagent_mcp.py"
         }
       ],
-      "category": "delegate"
+      "category": "delegate",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal"
+    },
+    "google_workspace": {
+      "owner": "llm-harness",
+      "status": "dashboard",
+      "implementation": "tools/google_workspace_mcp.py",
+      "purpose": "Read bounded mail and Drive text from the dedicated rig account through Gateway-owned OAuth",
+      "tools": [
+        {
+          "name": "search_mail",
+          "approval": "automatic"
+        },
+        {
+          "name": "read_mail",
+          "approval": "automatic"
+        },
+        {
+          "name": "search_drive",
+          "approval": "automatic"
+        },
+        {
+          "name": "read_drive_text",
+          "approval": "automatic"
+        }
+      ],
+      "category": "external",
+      "origin": "external",
+      "family": "google",
+      "source_bundle": "google"
+    },
+    "gateway_reset": {
+      "owner": "llm-harness",
+      "status": "dashboard",
+      "implementation": "tools/gateway_reset_mcp.py",
+      "purpose": "Durably restart the dashboard gateway and resume the invoking saved Codex conversation",
+      "tools": [
+        {
+          "name": "restart_gateway_and_resume",
+          "approval": "automatic"
+        }
+      ],
+      "category": "diagnostics",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal"
     },
     "rig_info": {
       "owner": "llm-harness",
@@ -90,7 +140,38 @@
           "approval": "automatic"
         }
       ],
-      "category": "local_info"
+      "category": "local_info",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal"
+    },
+    "workspace_read": {
+      "owner": "llm-harness",
+      "status": "dashboard",
+      "implementation": "tools/workspace_read_mcp.py",
+      "purpose": "Bounded read-only access to the selected Coding workspace",
+      "tools": [
+        {
+          "name": "list_workspace_files",
+          "approval": "automatic"
+        },
+        {
+          "name": "find_workspace_files",
+          "approval": "automatic"
+        },
+        {
+          "name": "read_workspace_file",
+          "approval": "automatic"
+        },
+        {
+          "name": "search_workspace_text",
+          "approval": "automatic"
+        }
+      ],
+      "category": "local_info",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal"
     },
     "local_rag_fixture": {
       "owner": "llm-harness",
@@ -102,7 +183,10 @@
           "name": "search_passages"
         }
       ],
-      "category": "local_info"
+      "category": "local_info",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal"
     },
     "daedalmap": {
       "owner": "county-map",
@@ -162,7 +246,10 @@
       ],
       "group": "daedalmap",
       "metadata": "https://app.daedalmap.com/mcp/server.json",
-      "observed_version": "0.4.0"
+      "observed_version": "0.4.0",
+      "origin": "external",
+      "family": "daedalmap",
+      "source_bundle": "daedalmap"
     },
     "deepwiki": {
       "owner": "external MCP service",
@@ -174,7 +261,10 @@
           "name": "read_wiki_structure"
         }
       ],
-      "category": "external"
+      "category": "external",
+      "origin": "external",
+      "family": "deepwiki",
+      "source_bundle": "deepwiki"
     },
     "openai_docs": {
       "owner": "external MCP service",
@@ -186,7 +276,10 @@
           "name": "search_openai_docs"
         }
       ],
-      "category": "external"
+      "category": "external",
+      "origin": "external",
+      "family": "openai",
+      "source_bundle": "openai"
     },
     "cloudflare_docs": {
       "owner": "external MCP service",
@@ -198,7 +291,132 @@
           "name": "search_cloudflare_documentation"
         }
       ],
-      "category": "external"
+      "category": "external",
+      "origin": "external",
+      "family": "cloudflare",
+      "source_bundle": "cloudflare"
+    },
+    "local_control": {
+      "owner": "llm-harness",
+      "status": "dashboard",
+      "implementation": "tools/host_control_mcp.py --scope local",
+      "purpose": "Broad Pi, rig, and named CPU worker commands for trusted local models",
+      "tools": [
+        {
+          "name": "run_local_command",
+          "approval": "automatic"
+        }
+      ],
+      "category": "local_info",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal"
+    },
+    "private_control": {
+      "owner": "llm-harness",
+      "status": "dashboard",
+      "implementation": "tools/host_control_mcp.py --scope full",
+      "purpose": "SSH commands to other trusted 10.0.0.0/24 hosts in Full mode",
+      "tools": [
+        {
+          "name": "run_private_command",
+          "approval": "automatic"
+        }
+      ],
+      "category": "local_info",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal"
+    },
+    "workspace_git": {
+      "owner": "llm-harness",
+      "status": "dashboard",
+      "implementation": "tools/workspace_git_mcp.py",
+      "purpose": "Read bounded Git status, log, and per-file diff in the selected Coding workspace",
+      "tools": [
+        {
+          "name": "get_workspace_git_status",
+          "approval": "automatic"
+        },
+        {
+          "name": "get_workspace_git_log",
+          "approval": "automatic"
+        },
+        {
+          "name": "get_workspace_git_diff",
+          "approval": "automatic"
+        }
+      ],
+      "category": "local_info",
+      "origin": "internal",
+      "family": "internal",
+      "source_bundle": "internal"
+    },
+    "github_public": {
+      "owner": "llm-harness",
+      "status": "dashboard",
+      "implementation": "tools/github_public_mcp.py",
+      "purpose": "Read bounded public GitHub repository metadata, tree paths, and source files at a pinned commit",
+      "tools": [
+        {
+          "name": "inspect_github_repo",
+          "approval": "automatic"
+        },
+        {
+          "name": "list_github_directory",
+          "approval": "automatic"
+        },
+        {
+          "name": "find_github_files",
+          "approval": "automatic"
+        },
+        {
+          "name": "read_github_file",
+          "approval": "automatic"
+        }
+      ],
+      "category": "external",
+      "origin": "external",
+      "family": "github",
+      "source_bundle": "github"
+    }
+  },
+  "bundles": {
+    "internal": {
+      "kind": "shared",
+      "status": "active"
+    },
+    "google": {
+      "kind": "provider",
+      "status": "active_adapter"
+    },
+    "github": {
+      "kind": "provider",
+      "status": "inventory_pending"
+    },
+    "codex": {
+      "kind": "provider",
+      "status": "inventory_pending"
+    },
+    "claude": {
+      "kind": "provider",
+      "status": "inventory_pending"
+    },
+    "daedalmap": {
+      "kind": "provider",
+      "status": "observed"
+    },
+    "deepwiki": {
+      "kind": "provider",
+      "status": "observed"
+    },
+    "openai": {
+      "kind": "provider",
+      "status": "observed"
+    },
+    "cloudflare": {
+      "kind": "provider",
+      "status": "observed"
     }
   }
 }

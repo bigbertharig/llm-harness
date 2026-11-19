@@ -16,9 +16,10 @@ spec.loader.exec_module(export)
 def test_registry_has_every_known_surface_and_existing_harness_code():
     registry = json.loads((ROOT / "tools/tool_registry.json").read_text())
     surfaces = registry["surfaces"]
-    assert set(surfaces) == {"local_agents", "rig_search", "rig_info", "local_rag_fixture", "daedalmap",
+    assert set(surfaces) == {"local_agents", "gateway_reset", "google_workspace", "github_public", "rig_search", "rig_info", "workspace_read", "workspace_git",
+                             "local_control", "private_control", "local_rag_fixture", "daedalmap",
                              "deepwiki", "openai_docs", "cloudflare_docs"}
-    assert sum(len(surface["tools"]) for surface in surfaces.values()) == 34
+    assert sum(len(surface["tools"]) for surface in surfaces.values()) == 51
     for name, surface in surfaces.items():
         assert surface["tools"] or surface["status"] == "discovery_pending", name
         names = [tool["name"] for tool in surface["tools"]]
@@ -33,24 +34,33 @@ def test_dashboard_catalog_is_generated_from_registry():
     expected = export.build(registry)
     published = json.loads((ROOT / "tools/dashboard_tool_catalog.json").read_text())
     assert published == expected
-    assert set(published["servers"]) == {"local_agents", "rig_search", "rig_info"}
+    assert set(published["servers"]) == {"local_agents", "gateway_reset", "google_workspace", "github_public", "rig_search", "rig_info",
+                                         "workspace_read", "workspace_git", "local_control", "private_control"}
 
 
 def test_tool_categories_and_live_daedalmap_discovery():
     files = ("tool_registry.json", "tool_fixtures.json")
     categories = [json.loads((ROOT / "tools" / name).read_text())["surfaces"] for name in files]
-    assert [sum(len(surface["tools"]) for surface in group.values()) for group in categories] == [34, 6]
+    assert [sum(len(surface["tools"]) for surface in group.values()) for group in categories] == [51, 6]
     names = [name for group in categories for name in group]
     assert len(names) == len(set(names))
     assert categories[0]["daedalmap"]["category"] == "external"
     assert categories[0]["daedalmap"]["implementation"] == "https://app.daedalmap.com/mcp?registry=site"
     assert categories[0]["daedalmap"]["observed_version"] == "0.4.0"
     assert {surface["category"] for surface in categories[0].values()} == {
-        "search", "local_info", "delegate", "external"}
+        "search", "local_info", "delegate", "external", "diagnostics"}
+    assert {surface["origin"] for surface in categories[0].values()} == {"internal", "external"}
+    assert categories[0]["google_workspace"]["family"] == "google"
+    assert categories[0]["google_workspace"]["source_bundle"] == "google"
+    assert categories[0]["workspace_git"]["family"] == "internal"
+    registry = json.loads((ROOT / "tools/tool_registry.json").read_text())
+    assert {"internal", "google", "github", "codex", "claude"} <= set(registry["bundles"])
     assert set(tool["name"] for tool in categories[0]["rig_search"]["tools"]) == {
         "search_web", "fetch_page", "search_fixture_web", "fetch_fixture_page"}
     assert set(tool["name"] for tool in categories[0]["local_agents"]["tools"]) == {
         "list_local_agents", "delegate_task", "delegate_fixture_task"}
+    assert set(tool["name"] for tool in categories[0]["workspace_read"]["tools"]) == {
+        "list_workspace_files", "find_workspace_files", "read_workspace_file", "search_workspace_text"}
 
 
 def test_diagnostics_profiles_match_registry(tmp_path):

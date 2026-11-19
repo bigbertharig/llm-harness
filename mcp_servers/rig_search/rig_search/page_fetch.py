@@ -15,14 +15,19 @@ SKIP_TAGS = {"script", "style", "nav", "footer", "header", "aside"}
 
 
 class _Text(HTMLParser):
-    def __init__(self):
+    def __init__(self, base_url=""):
         super().__init__(convert_charrefs=True)
+        self.base_url = base_url
         self.skip = 0
         self.title = False
         self.title_parts = []
         self.parts = []
+        self.links = []
+        self.anchor = None
 
     def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            self.anchor = {"href": dict(attrs).get("href", ""), "label": []}
         if tag in SKIP_TAGS:
             self.skip += 1
         elif tag == "title":
@@ -31,12 +36,24 @@ class _Text(HTMLParser):
             self.parts.append("\n")
 
     def handle_endtag(self, tag):
+        if tag == "a" and self.anchor:
+            target = urljoin(self.base_url, self.anchor["href"])
+            source = urlsplit(self.base_url)
+            parsed = urlsplit(target)
+            label = " ".join("".join(self.anchor["label"]).split())[:120]
+            if (parsed.scheme == "https" and parsed.hostname == source.hostname and
+                    target != self.base_url and len(target) <= 2048 and
+                    not any(link["url"] == target for link in self.links) and len(self.links) < 40):
+                self.links.append({"url": target, "label": label or parsed.path})
+            self.anchor = None
         if tag in SKIP_TAGS and self.skip:
             self.skip -= 1
         elif tag == "title":
             self.title = False
 
     def handle_data(self, data):
+        if self.anchor is not None:
+            self.anchor["label"].append(data)
         if self.title:
             self.title_parts.append(data)
         elif not self.skip:
@@ -96,12 +113,13 @@ def fetch_page(url, max_chars=12000, timeout=12):
             if len(body) > MAX_BYTES:
                 raise ValueError("page exceeds size limit")
             charset = response.headers.get_content_charset() or "utf-8"
-            page = _Text()
+            page = _Text(current)
             page.feed(body.decode(charset, errors="replace"))
             text = "\n".join(" ".join(part.split()) for part in "".join(page.parts).splitlines() if part.strip())
             return {"url": current, "title": " ".join("".join(page.title_parts).split()),
                     "text": text[:max_chars], "chars_fetched": min(len(text), max_chars),
-                    "truncated": len(text) > max_chars, "content_type": content_type,
+                    "truncated": len(text) > max_chars, "links": page.links,
+                    "content_type": content_type,
                     "executor": "pi_cpu", "elapsed_seconds": round(time.monotonic() - started, 3)}
         finally:
             connection.close()

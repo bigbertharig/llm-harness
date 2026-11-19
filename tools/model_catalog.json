@@ -20,6 +20,26 @@
       "procedure": "kv_expert_private_v1",
       "status": "research"
     },
+    "nemotron74_shared_kv_http_v1": {
+      "evidence": [
+        "results/runtime_experiments/nemotron_shared_kv_http_20261116/README.md"
+      ],
+      "model": "nemotron-3.5-bolt:74b-a9b",
+      "placement": {
+        "chat_state": [
+          "gpu0",
+          "gpu_workers"
+        ],
+        "experts": [
+          "gpu_workers"
+        ],
+        "weights": [
+          "gpu0"
+        ]
+      },
+      "procedure": "shared_kv_http_v1",
+      "status": "validated"
+    },
     "qwen27_3090_five_kv1060_v1": {
       "evidence": [
         "results/runtime_experiments/kv_local_worker_matrix_20261107/README.md",
@@ -701,7 +721,7 @@
     }
   },
   "schema": "harness-model-library/1",
-  "source_sha256": "e9c1dc65156d9261843385fb17ba6740683b3413c44e0ea6f48955512979888e",
+  "source_sha256": "3880a55208bc6e8b0bd41f9a88b367d4ad15aba66ae4f4ea622e3ad86236311c",
   "subagent_catalog": {
     "codex_luna": {
       "agent_types": [
@@ -725,13 +745,41 @@
       "provider": "codex",
       "status": "candidate"
     },
+    "nemotron74_shared_1060": {
+      "agent_types": [
+        "coding",
+        "research"
+      ],
+      "context_allocation": "fixed_per_chat",
+      "context_cap": 262144,
+      "evidence": "results/runtime_experiments/nemotron_shared_kv_http_20261116/README.md",
+      "max_attached_chats": 1,
+      "mode": "gpu1060-chat-f16",
+      "model": "nemotron-3.5-bolt:74b-a9b",
+      "provider": "rig_shared_chat",
+      "requires": {
+        "mode": "gpu0-main-f16-experts1234",
+        "model": "nemotron-3.5-bolt:74b-a9b"
+      },
+      "status": "experimental"
+    },
     "qwen35_shared_1060": {
       "agent_types": [
         "coding",
         "research"
       ],
+      "context_allocation": "dynamic_at_attach",
       "context_cap": 262144,
+      "context_default": 65536,
+      "context_min": 16384,
       "evidence": "results/runtime_experiments/qwen35_shared_kv_service_20261112/README.md",
+      "max_attached_chats": 5,
+      "memory_estimate": {
+        "admission_reserve_mib": 256,
+        "fixed_compute_mib": 1029,
+        "kv_mib_at_262144": 1009,
+        "method": "linear_q4_kv_from_observed_262144_worker"
+      },
       "mode": "gpu1060-chat-q4",
       "model": "qwen3.6:35b-a3b-xl",
       "provider": "rig_shared_chat",
