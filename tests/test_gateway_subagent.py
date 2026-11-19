@@ -198,6 +198,23 @@ class GatewaySubagentRequest(unittest.TestCase):
             'parent_route': 'cloud/codex', 'agent_type': 'research',
             'candidate_id': 'qwen35_shared_1060', 'min_context': 4096})
 
+    def test_cloud_parent_can_request_named_separate_model_candidate(self):
+        class Reply:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                pass
+            def read(self):
+                return b'{"route":"gpu-rig/small","gpu_ids":[2]}'
+
+        with patch('gateway_subagent.urlopen', return_value=Reply()) as call:
+            resolve_child('http://127.0.0.1:8080', 'cloud/codex', 'coding',
+                          'small_worker', worker_strategy='separate_model')
+        self.assertEqual(json.loads(call.call_args.args[0].data), {
+            'parent_route': 'cloud/codex', 'agent_type': 'coding',
+            'candidate_id': 'small_worker', 'min_context': 4096,
+            'worker_strategy': 'separate_model'})
+
     def test_cloud_parent_child_receipt_does_not_require_local_parent_roster(self):
         reservation = {'context_capacity': 8192, 'placement': {'gpus': [2]},
                        'reserved_mib': 1400, 'reservation_scope': 'gpu_exclusive'}

@@ -225,8 +225,6 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
         raise ValueError('requested context must be 16384..262144 and meet the minimum')
     if worker_strategy not in ('auto', 'shared_model', 'separate_model'):
         raise ValueError('unknown worker strategy')
-    if worker_strategy == 'separate_model' and candidate_id is not None:
-        raise ValueError('candidate_id cannot be combined with separate_model')
     if tool_profile not in ('none', 'public_research', 'workspace_read', 'google_workspace'):
         raise ValueError('unknown child tool profile')
     if tool_profile == 'workspace_read':

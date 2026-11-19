@@ -158,7 +158,6 @@ def handle(packet):
                 or (context_tokens is not None and (type(context_tokens) is not int
                     or not 16384 <= context_tokens <= 262144 or context_tokens < min_context))
                 or worker_strategy not in ('auto', 'shared_model', 'separate_model')
-                or (worker_strategy == 'separate_model' and candidate_id is not None)
                 or (config.cloud_parent and candidate_id in ('codex_terra', 'codex_luna'))
                 or tool_profile not in TOOL['inputSchema']['properties']['tool_profile']['enum']
                 or (candidate_id in ('codex_terra', 'codex_luna') and tool_profile != 'none')
