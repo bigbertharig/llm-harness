@@ -2,6 +2,8 @@
 
 Updated 2026-11-18. [Tool families](TOOL_FAMILIES.md) defines the current organization and promotion path. Ownership, origin, family, and availability are separate fields in `tools/tool_registry.json`. `tools/tool_fixtures.json` records the diagnostics test server, and `tools/dashboard_tool_catalog.json` is the generated projection. Gateway then applies separate Chat and Coding allowlists. The detailed notes below include historical test evidence; the registry controls current availability.
 
+Change-scoped tests are named in `tests/suites.json` and run with `python tools/run_test_suite.py <suite>`. Use `--list` to inspect them. The `google_workspace` suite deliberately selects only the MCP schema, delegated-child bridge/policy, and catalog contracts changed by that integration; do not use bare repository-wide pytest during the edit loop because archived result trees contain unrelated third-party tests.
+
 | Ownership | Surfaces | Tool entries | Currently in dashboard chat |
 | --- | ---: | ---: | ---: |
 | Internal rig tools | 9 | 24 | 20 |

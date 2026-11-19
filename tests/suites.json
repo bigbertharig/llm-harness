@@ -1,0 +1,11 @@
+{
+  "google_workspace": {
+    "purpose": "Model-neutral Google MCP schemas, child permission/profile behavior, text bridge compatibility, and exported catalog contracts",
+    "tests": [
+      "tests/test_google_workspace_mcp.py",
+      "tests/test_gateway_subagent.py",
+      "tests/test_child_policy.py",
+      "tests/test_tool_registry.py"
+    ]
+  }
+}
