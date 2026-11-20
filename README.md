@@ -9,7 +9,7 @@ Big Bertha runs across a Pi control host, an isolated GPU rig, and optional CPU 
 | Repository | Responsibility |
 |---|---|
 | [llm-gateway](https://github.com/bigbertharig/llm-gateway) | Serves the dashboard, conversations, model API, tool policy, and work coordination. Its Manager also coordinates some model placement and loading. |
-| [llm_orchestration](https://github.com/bigbertharig/llm_orchestration) | Observes and controls rig hardware, enforces admission and reservations, manages runtimes, and runs the legacy brain/worker batch engine. |
+| [llm_orchestration](https://github.com/bigbertharig/llm_orchestration) | Observes and controls rig hardware, enforces admission and reservations, and manages model runtimes. |
 | [benchmarking](https://github.com/bigbertharig/benchmarking) | Measures models and runtimes; publishes the model library, roles, load recipes, evaluation suites, and results. |
 | [llm-harness](https://github.com/bigbertharig/llm-harness) | Builds the project-owned tool and agent layer. External harnesses supply comparison evidence and features to adapt. |
 
