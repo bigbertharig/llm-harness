@@ -24,7 +24,7 @@ def validate_request(profile: str, tool: str, arguments: dict, workspace_root: P
                                   'read_workspace_file', 'search_workspace_text'},
                'google_workspace': {'search_mail', 'read_mail', 'send_email',
                                     'search_drive', 'read_drive_text', 'create_drive_folder',
-                                    'upload_drive_text', 'create_google_doc',
+                                    'upload_drive_text', 'upload_drive_image', 'create_google_doc',
                                     'append_google_doc_text', 'create_google_sheet',
                                     'read_google_sheet', 'update_google_sheet',
                                     'append_google_sheet_rows'}}

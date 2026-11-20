@@ -61,6 +61,13 @@ TOOLS = {
                                                 "text/plain", "text/markdown", "text/csv", "application/json"]},
                                             "folder_id": ID}),
                           ["name", "content", "mime_type", "request_id", "confirmed"], "drive/upload-text"),
+    "upload_drive_image": ("Upload a PNG, JPEG, or WebP image from an approved local export directory to Drive. The Gateway checks the file path and size.",
+                           write_properties({"path": {"type": "string", "minLength": 1, "maxLength": 4096},
+                                             "name": SHORT_TEXT,
+                                             "mime_type": {"type": "string", "enum": [
+                                                 "image/png", "image/jpeg", "image/webp"]},
+                                             "folder_id": ID}),
+                           ["path", "name", "mime_type", "request_id", "confirmed"], "drive/upload-image"),
     "create_google_doc": ("Create a Google Doc with optional initial text and destination folder.",
                           write_properties({"title": SHORT_TEXT,
                                             "initial_text": {"type": "string", "maxLength": 50000},

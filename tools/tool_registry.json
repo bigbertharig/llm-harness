@@ -100,6 +100,10 @@
           "approval": "automatic"
         },
         {
+          "name": "upload_drive_image",
+          "approval": "automatic"
+        },
+        {
           "name": "create_google_doc",
           "approval": "automatic"
         },

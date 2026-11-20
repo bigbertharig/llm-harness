@@ -26,7 +26,7 @@ def test_tools_and_invalid_request():
     rows = [json.loads(line) for line in run.stdout.splitlines()]
     assert {row["name"] for row in rows[0]["result"]["tools"]} == {
         "search_mail", "read_mail", "send_email", "search_drive", "read_drive_text",
-        "create_drive_folder", "upload_drive_text", "create_google_doc",
+        "create_drive_folder", "upload_drive_text", "upload_drive_image", "create_google_doc",
         "append_google_doc_text", "create_google_sheet", "read_google_sheet",
         "update_google_sheet", "append_google_sheet_rows"}
     assert rows[1]["result"]["isError"] is True
