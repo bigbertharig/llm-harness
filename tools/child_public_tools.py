@@ -7,6 +7,8 @@ import subprocess
 import threading
 import time
 
+MAX_MCP_LINE_CHARS = 131_072
+
 
 def discover_tools(server, timeout=15):
     """Return advertised definitions for an allowlisted stdio server."""
@@ -18,8 +20,8 @@ def discover_tools(server, timeout=15):
     received = queue.Queue()
 
     def reader():
-        while line := proc.stdout.readline(131073):
-            if len(line) > 131072 or not line.endswith('\n'):
+        while line := proc.stdout.readline(MAX_MCP_LINE_CHARS + 1):
+            if len(line) > MAX_MCP_LINE_CHARS or not line.endswith('\n'):
                 received.put(RuntimeError('public MCP response exceeded its line limit'))
                 break
             try:
@@ -203,8 +205,8 @@ def call_tool(server, tool, arguments, timeout=30):
     received = queue.Queue()
 
     def reader():
-        while line := proc.stdout.readline(131073):
-            if len(line) > 131072 or not line.endswith('\n'):
+        while line := proc.stdout.readline(MAX_MCP_LINE_CHARS + 1):
+            if len(line) > MAX_MCP_LINE_CHARS or not line.endswith('\n'):
                 received.put(RuntimeError('public MCP response exceeded its line limit'))
                 break
             try:

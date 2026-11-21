@@ -107,6 +107,34 @@ class ProjectAgentTests(unittest.TestCase):
         self.assertEqual(result['answer'], 'direct answer')
         self.assertIsNone(result['error'])
         self.assertEqual(seen, [512])
+        self.assertEqual(result['limits']['requested_output_tokens'], 1000)
+        self.assertEqual(result['limits']['effective_output_tokens'], 512)
+        self.assertEqual(result['limits']['route_output_tokens'], 512)
+        self.assertFalse(result['limits']['output_limit_hit'])
+        self.assertEqual(result['limits']['mcp_response_line_characters_max'], 131072)
+        self.assertEqual(result['limits']['tool_result_bytes_max'], 32000)
+
+    def test_truncated_final_answer_is_not_reported_as_success(self):
+        replies = iter([packet('partial answer', finish='length'),
+                        packet('complete concise answer')])
+        with patch('project_agent.fetch_ready_roster', return_value=READY):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='answer', agent_type='research',
+                complete=lambda *_: next(replies))
+        self.assertIsNone(result['error'])
+        self.assertEqual(result['answer'], 'complete concise answer')
+        self.assertTrue(result['limits']['output_limit_hit'])
+        self.assertTrue(result['truncation_repair_attempted'])
+
+    def test_second_truncated_final_answer_is_a_failure(self):
+        with patch('project_agent.fetch_ready_roster', return_value=READY):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='answer', agent_type='research',
+                complete=lambda *_: packet('partial answer', finish='length'))
+        self.assertEqual(result['error'], 'model final answer hit the output-token limit')
+        self.assertEqual(result['model_steps'], 2)
 
     def test_executes_allowlisted_tool_then_requires_final_answer(self):
         replies = iter([packet(json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
@@ -133,6 +161,46 @@ class ProjectAgentTests(unittest.TestCase):
         self.assertEqual(result['tool_calls'], 1)
         self.assertEqual(result['model_steps'], 2)
         self.assertIn('Validated tool results', seen_messages[1][-1]['content'])
+
+    def test_tool_receipt_keeps_bounded_file_evidence_metadata(self):
+        replies = iter([packet(json.dumps({
+            'name': 'mcp__workspace_read__read_workspace_file',
+            'arguments': {'path': 'README.md', 'start_line': 1, 'max_lines': 20}})),
+                        packet('Grounded answer.')])
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
+                  'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
+                                   'inputSchema': {'type': 'object'}}], 'command': ['fixture']}
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool', return_value={'isError': False,
+                 'structuredContent': {'path': 'README.md', 'content': 'text',
+                     'start_line': 1, 'end_line': 20, 'requested_range_complete': True,
+                     'more_lines_after': True, 'truncated': True}}):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='inspect', agent_type='coding', tool_profile='workspace_read',
+                tool_server=server, workspace_root=Path(temp),
+                complete=lambda *_: next(replies))
+        evidence = result['tool_call_summary'][0]['evidence']
+        self.assertEqual((evidence['path'], evidence['start_line'], evidence['end_line']),
+                         ('README.md', 1, 20))
+        self.assertTrue(evidence['more_lines_after'])
+        self.assertEqual(result['file_evidence_coverage'], [{
+            'path': 'README.md', 'start_line': 1, 'through_line': 20,
+            'complete_file': False, 'calls': 1}])
+
+    def test_file_coverage_merges_character_truncated_overlap(self):
+        calls = [
+            {'tool': 'read_workspace_file', 'is_error': False, 'evidence': {
+                'path': 'doc.md', 'start_line': 1, 'end_line': 10,
+                'requested_range_complete': False, 'more_lines_after': False}},
+            {'tool': 'read_workspace_file', 'is_error': False, 'evidence': {
+                'path': 'doc.md', 'start_line': 10, 'end_line': 15,
+                'requested_range_complete': True, 'more_lines_after': False}},
+        ]
+        self.assertEqual(project_agent._file_evidence_coverage(calls), [{
+            'path': 'doc.md', 'start_line': 1, 'through_line': 15,
+            'complete_file': True, 'calls': 2}])
 
     def test_repeated_call_forces_one_tool_free_final_answer(self):
         request = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',

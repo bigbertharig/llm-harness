@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 from child_policy import (MAX_MODEL_STEPS, MAX_TOOL_BATCH_CALLS, MAX_TOOL_ERRORS,
                           ToolBudget, validate_request)
 from child_public_tools import call_tool, parse_requests
+from child_public_tools import MAX_MCP_LINE_CHARS
 from ready_roster import fetch_ready_roster
 from subagent_contract import CONTRACT_VERSION, child_system_prompt, child_task_envelope
 from workspace_read_mcp import TOOLS as WORKSPACE_TOOL_DEFINITIONS
@@ -27,6 +28,8 @@ WORKSPACE_GIT_TOOLS = ('get_workspace_git_status', 'get_workspace_git_log',
                        'compare_workspace_git_revisions',
                        'read_workspace_file_at_revision', 'get_workspace_file_history')
 ROOT = Path(__file__).resolve().parents[1]
+MAX_AGENT_OUTPUT_TOKENS = 4096
+MAX_AGENT_TIMEOUT_SECONDS = 600
 
 
 class AgentLoopError(RuntimeError):
@@ -118,6 +121,48 @@ def _native_requests(packet: dict, server: dict) -> list[tuple[str, dict, str]]:
     return requests
 
 
+def _evidence_metadata(tool: str, evidence) -> dict:
+    """Keep bounded provenance fields without duplicating model-visible result content."""
+    if not isinstance(evidence, dict):
+        return {}
+    common = ('path', 'start_line', 'end_line', 'requested_range_complete',
+              'more_lines_after', 'truncated', 'files_scanned')
+    metadata = {key: evidence[key] for key in common if key in evidence}
+    if tool in ('find_workspace_files', 'search_workspace_text'):
+        matches = evidence.get('matches')
+        if isinstance(matches, list):
+            metadata['match_count'] = len(matches)
+    return metadata
+
+
+def _file_evidence_coverage(tool_calls: list[dict]) -> list[dict]:
+    """Summarize contiguous line coverage; do not trust model claims of full reads."""
+    grouped: dict[str, list[dict]] = {}
+    for row in tool_calls:
+        if row.get('tool') != 'read_workspace_file' or row.get('is_error'):
+            continue
+        evidence = row.get('evidence') or {}
+        if isinstance(evidence.get('path'), str):
+            grouped.setdefault(evidence['path'], []).append(evidence)
+    summaries = []
+    for path, rows in sorted(grouped.items()):
+        cursor = 1
+        reached_eof = False
+        for row in sorted(rows, key=lambda item: (item.get('start_line', 1), item.get('end_line', 0))):
+            start, end = row.get('start_line'), row.get('end_line')
+            if type(start) is not int or type(end) is not int or start > cursor:
+                continue
+            # A character-truncated final line is not fully covered. A later
+            # read beginning on that line can complete it.
+            covered_end = end if row.get('requested_range_complete') else end - 1
+            cursor = max(cursor, covered_end + 1)
+            if row.get('requested_range_complete') and row.get('more_lines_after') is False:
+                reached_eof = cursor > end
+        summaries.append({'path': path, 'start_line': 1, 'through_line': max(0, cursor - 1),
+                          'complete_file': reached_eof, 'calls': len(rows)})
+    return summaries
+
+
 def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
               agent_type: str, tool_profile: str = 'none', tool_server: dict | None = None,
               workspace_root: Path | None = None, max_tokens: int = 1024,
@@ -125,10 +170,10 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
               cancel_path: Path | None = None,
               complete=_completion) -> dict:
     """Run a bounded direct loop and return a model-neutral execution receipt."""
-    if type(max_tokens) is not int or not 1 <= max_tokens <= 4096:
-        raise ValueError('max_tokens must be between 1 and 4096')
-    if type(timeout_s) is not int or not 1 <= timeout_s <= 600:
-        raise ValueError('timeout_s must be between 1 and 600')
+    if type(max_tokens) is not int or not 1 <= max_tokens <= MAX_AGENT_OUTPUT_TOKENS:
+        raise ValueError(f'max_tokens must be between 1 and {MAX_AGENT_OUTPUT_TOKENS}')
+    if type(timeout_s) is not int or not 1 <= timeout_s <= MAX_AGENT_TIMEOUT_SECONDS:
+        raise ValueError(f'timeout_s must be between 1 and {MAX_AGENT_TIMEOUT_SECONDS}')
     if type(max_tool_calls) is not int or not 1 <= max_tool_calls <= 12:
         raise ValueError('max_tool_calls must be between 1 and 12')
     if tool_profile == 'none':
@@ -145,6 +190,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     ready = next((row for row in roster['data'] if row['id'] == route), None)
     if ready is None or ready['model'] != expected_model:
         raise ValueError('requested route/model is not in the ready roster')
+    requested_max_tokens = max_tokens
     output_limit = ready.get('output_limit')
     if isinstance(output_limit, int) and output_limit > 0:
         max_tokens = min(max_tokens, output_limit)
@@ -160,6 +206,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     tool_calls: list[dict] = []
     steps: list[dict] = []
     repair_attempted = False
+    truncation_repair_attempted = False
     tool_errors = 0
     tools_enabled = bool(tool_server)
     answer = ''
@@ -191,6 +238,17 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         if not tool_server or not tools_enabled:
             if not answer:
                 error = 'model returned an empty answer'
+            elif choice.get('finish_reason') == 'length':
+                if not truncation_repair_attempted and step_number < MAX_MODEL_STEPS:
+                    truncation_repair_attempted = True
+                    target_chars = max(200, min(2000, max_tokens * 2))
+                    messages.append({'role': 'assistant', 'content': answer})
+                    messages.append({'role': 'user', 'content':
+                        f'FINAL FORMAT REPAIR: The prior answer was truncated. Rewrite the complete '
+                        f'answer in at most {target_chars} characters. Keep only the result, essential '
+                        'evidence, actual verification, and limitations. Do not request tools.'})
+                    continue
+                error = 'model final answer hit the output-token limit'
             break
 
         try:
@@ -249,8 +307,9 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 error = f'tool call failed: {type(exc).__name__}: {exc}'
                 break
             is_error = bool(result.get('isError'))
-            tool_calls.append({'tool': name, 'arguments': arguments, 'is_error': is_error})
             evidence = result.get('structuredContent') or result.get('content') or result
+            tool_calls.append({'tool': name, 'arguments': arguments, 'is_error': is_error,
+                               'evidence': _evidence_metadata(name, evidence)})
             evidence_batch.append({'tool': name, 'arguments': arguments, 'result': evidence})
             if is_error:
                 tool_errors += 1
@@ -296,12 +355,32 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     return {'engine': 'big-bertha-project-agent', 'engine_version': 1,
             'task_contract_version': CONTRACT_VERSION,
             'route': route, 'model': expected_model, 'tool_profile': tool_profile,
+            'limits': {
+                'route_context_tokens': ready.get('context_length'),
+                'route_output_tokens': output_limit,
+                'requested_output_tokens': requested_max_tokens,
+                'effective_output_tokens': max_tokens,
+                'task_characters': len(prompt),
+                'task_bytes': len(prompt.encode('utf-8')),
+                'system_prompt_bytes': len(system.encode('utf-8')),
+                'user_envelope_bytes': len(messages[1]['content'].encode('utf-8')),
+                'output_limit_hit': any(row.get('finish_reason') == 'length' for row in steps),
+                'model_steps_max': MAX_MODEL_STEPS,
+                'tool_calls_max': budget.max_calls,
+                'tool_batch_compatibility_max': MAX_TOOL_BATCH_CALLS,
+                'tool_result_bytes_max': budget.receipt()['max_result_bytes'],
+                'tool_total_bytes_max': budget.receipt()['max_total_bytes'],
+                'mcp_response_line_characters_max': MAX_MCP_LINE_CHARS,
+                'task_timeout_seconds': timeout_s,
+            },
             'answer': answer, 'error': error, 'duration_s': duration,
             'model_steps': len(steps), 'max_model_steps': MAX_MODEL_STEPS,
             'steps': steps, 'tool_calls': len(tool_calls),
             'tool_call_summary': tool_calls, 'tool_budget': budget.receipt(),
+            'file_evidence_coverage': _file_evidence_coverage(tool_calls),
             'tool_batch_limit': MAX_TOOL_BATCH_CALLS,
-            'tool_format_repair_attempted': repair_attempted}
+            'tool_format_repair_attempted': repair_attempted,
+            'truncation_repair_attempted': truncation_repair_attempted}
 
 
 def main() -> int:

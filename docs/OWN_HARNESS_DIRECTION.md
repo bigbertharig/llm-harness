@@ -24,6 +24,9 @@ parser retains bounded legacy batch compatibility. A parent may lower the
 per-task tool-call budget from the twelve-call ceiling; reaching that budget
 disables tools and forces final synthesis from collected evidence. Receipts
 record both the task-contract version and effective tool budget.
+Receipts also separate requested from route-clamped output limits and retain
+bounded evidence-range metadata. A final answer that hits the output ceiling
+gets one tool-free compression repair; a second truncation fails the task.
 
 Candidate controllers and their historical runners remain together in
 `research/external_harnesses/` for reference. That directory is optional: the
