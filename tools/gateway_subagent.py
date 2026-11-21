@@ -23,7 +23,7 @@ from urllib.request import Request, urlopen
 from ready_roster import fetch_ready_roster
 from subagent_contract import child_system_prompt
 from codex_child import run_codex_child
-from child_public_tools import parse_request, call_tool
+from child_public_tools import parse_requests, call_tool
 from child_policy import ToolBudget, guard_child_run, validate_request
 
 HOME = Path('/home/bryan')
@@ -338,39 +338,52 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
                             error = 'shared model produced malformed repetitive output'
                             break
                         if tool_bridge and native_tool_calls == 0:
-                            request = parse_request(answer, tool_bridge, tool_bridge['tools'])
-                            if request:
-                                name, arguments = request
+                            requests = parse_requests(answer, tool_bridge, tool_bridge['tools'])
+                            pending = []
+                            pending_fingerprints = set()
+                            for request in requests:
                                 fingerprint = json.dumps(request, sort_keys=True)
-                                if fingerprint in attempted:
-                                    error = 'child repeated or exceeded its tool-call limit'
-                                    break
-                                attempted.add(fingerprint)
-                                try:
-                                    budget.before_call()
-                                    validate_request(tool_profile, name, arguments, workspace_root)
-                                    result = call_tool(tool_bridge, name, arguments,
-                                                       timeout=min(45, max(1, deadline - time.monotonic() - 5)))
-                                    budget.record(result)
-                                except Exception as exc:
-                                    error = f'child tool call failed: {type(exc).__name__}: {exc}'
-                                    break
-                                bridge_calls.append({'tool': name, 'is_error': bool(result.get('isError'))})
-                                if result.get('isError'):
-                                    if budget.calls >= budget.receipt()['max_calls']:
-                                        error = f'child tool returned repeated errors: {name}'
+                                if fingerprint not in attempted and fingerprint not in pending_fingerprints:
+                                    pending.append(request)
+                                    pending_fingerprints.add(fingerprint)
+                            if requests and not pending:
+                                error = 'child repeated or exceeded its tool-call limit'
+                                break
+                            if pending:
+                                evidence_batch = []
+                                for name, arguments in pending:
+                                    fingerprint = json.dumps((name, arguments), sort_keys=True)
+                                    attempted.add(fingerprint)
+                                    try:
+                                        budget.before_call()
+                                        validate_request(tool_profile, name, arguments, workspace_root)
+                                        result = call_tool(tool_bridge, name, arguments,
+                                                           timeout=min(45, max(1, deadline - time.monotonic() - 5)))
+                                        budget.record(result)
+                                    except Exception as exc:
+                                        error = f'child tool call failed: {type(exc).__name__}: {exc}'
                                         break
-                                    feedback = ('MCP tool rejected the arguments for ' + name + ':\n' +
-                                                json.dumps(result, ensure_ascii=False)[:3000] +
-                                                '\nCorrect the arguments and return one JSON tool request. '
+                                    bridge_calls.append({'tool': name, 'is_error': bool(result.get('isError'))})
+                                    evidence = result.get('structuredContent') or result.get('content') or result
+                                    evidence_batch.append({'tool': name, 'arguments': arguments, 'result': evidence})
+                                    if result.get('isError'):
+                                        break
+                                if error:
+                                    break
+                                if bridge_calls[-1]['is_error']:
+                                    if budget.calls >= budget.receipt()['max_calls']:
+                                        error = f'child tool returned repeated errors: {bridge_calls[-1]["tool"]}'
+                                        break
+                                    feedback = ('MCP tool rejected one request in the batch:\n' +
+                                                json.dumps(evidence_batch[-1], ensure_ascii=False)[:3000] +
+                                                '\nCorrect only that request and return one JSON tool request. '
                                                 'Do not invent a result.')
                                 else:
-                                    evidence = result.get('structuredContent') or result.get('content') or result
-                                    feedback = ('MCP result for ' + name + ':\n' +
-                                                json.dumps(evidence, ensure_ascii=False)[:20000] +
-                                                '\nContinue the original task. If another tool is needed, return '
-                                                'only a JSON object with name and arguments. Otherwise answer '
-                                                'the user with the evidence and paths you used.')
+                                    feedback = ('MCP batch results:\n' +
+                                                json.dumps(evidence_batch, ensure_ascii=False)[:24000] +
+                                                '\nAll calls in this validated batch ran. Answer the original task '
+                                                'with the evidence and paths now. Request one additional tool call '
+                                                'only if it is essential; do not repeat completed calls.')
                                 proc.stdin.write(json.dumps({'id': f'tool-feedback-{len(bridge_calls)}',
                                                              'type': 'prompt', 'message': feedback}) + '\n')
                                 proc.stdin.flush()

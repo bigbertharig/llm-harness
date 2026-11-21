@@ -8,6 +8,25 @@ import threading
 import time
 
 
+def parse_requests(answer, server, targets):
+    """Return a bounded leading XML batch, or one request in another accepted dialect."""
+    raw = answer.strip() if isinstance(answer, str) else ''
+    calls = []
+    while raw.startswith('<') and len(calls) < 12:
+        match = re.match(r'^<([A-Za-z_][A-Za-z0-9_]*)>\s*(.*?)\s*</\1>', raw, re.S)
+        if not match:
+            break
+        request = parse_request(match.group(0), server, targets)
+        if request is None:
+            return []
+        calls.append(request)
+        raw = raw[match.end():].lstrip()
+    if calls:
+        return calls
+    request = parse_request(answer, server, targets)
+    return [request] if request else []
+
+
 def parse_request(answer, server, targets):
     raw = answer.strip()
     if raw.startswith('```json\n') and raw.endswith('\n```'):
@@ -17,6 +36,33 @@ def parse_request(answer, server, targets):
     try:
         packet = json.loads(raw)
     except (TypeError, ValueError):
+        # Nemotron commonly emits an XML-shaped tool envelope even when asked
+        # for JSON. Accept one complete leading call only; the allowlist and
+        # MCP server still validate the tool and arguments before dispatch.
+        xml = re.match(r'^<([A-Za-z_][A-Za-z0-9_]*)>\s*(.*?)\s*</\1>', raw, re.S)
+        if xml:
+            allowed_names = {'mcp__' + server['name'] + '__' + name: name for name in targets}
+            name = allowed_names.get(xml.group(1)) or (xml.group(1) if xml.group(1) in targets else None)
+            if not name:
+                return None
+            body, arguments, position = xml.group(2), {}, 0
+            field = re.compile(r'\s*<([A-Za-z_][A-Za-z0-9_]*)>([^<]*)</\1>')
+            while position < len(body):
+                if not body[position:].strip():
+                    break
+                match = field.match(body, position)
+                if not match or match.group(1) in arguments or '&' in match.group(2):
+                    return None
+                value = match.group(2).strip()
+                try:
+                    decoded = json.loads(value)
+                except ValueError:
+                    decoded = value
+                if isinstance(decoded, (dict, list)):
+                    return None
+                arguments[match.group(1)] = decoded
+                position = match.end()
+            return (name, arguments)
         # Some local models emit conventional function syntax instead of the
         # requested JSON envelope. Accept it only when the entire response is
         # one or more allowlisted calls, then execute the first and feed its

@@ -10,7 +10,8 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 import gateway_subagent
 from gateway_subagent import malformed_child_output, resolve_child, run_child
-from child_public_tools import call_tool as call_public_tool, parse_request as parse_public_request
+from child_public_tools import (call_tool as call_public_tool, parse_request as parse_public_request,
+                                parse_requests as parse_public_requests)
 from subagent_contract import canonical_integer_answer, canonical_final_line, child_system_prompt
 
 
@@ -49,6 +50,26 @@ class GatewaySubagentRequest(unittest.TestCase):
                          ('search_workspace_text', {'query': 'main agent'}))
         self.assertIsNone(parse_public_request(
             'search_workspace_text({"query":"ok"})\ndelete_file({"path":"README.md"})',
+            server, server['tools']))
+
+    def test_tool_bridge_accepts_one_strict_allowlisted_xml_call(self):
+        server = {'name': 'workspace_read', 'tools': ['search_workspace_text', 'read_workspace_file']}
+        calls = ('<read_workspace_file>\n<path>ARCHITECTURE.md</path>\n'
+                 '<start_line>1</start_line>\n<max_lines>200</max_lines>\n</read_workspace_file>\n'
+                 '<search_workspace_text><query>proposed</query></search_workspace_text>')
+        self.assertEqual(parse_public_request(calls, server, server['tools']),
+                         ('read_workspace_file', {'path': 'ARCHITECTURE.md',
+                          'start_line': 1, 'max_lines': 200}))
+        self.assertEqual(parse_public_requests(calls, server, server['tools']), [
+            ('read_workspace_file', {'path': 'ARCHITECTURE.md', 'start_line': 1, 'max_lines': 200}),
+            ('search_workspace_text', {'query': 'proposed'})])
+        self.assertIsNone(parse_public_request(
+            '<delete_file><path>README.md</path></delete_file>', server, server['tools']))
+        self.assertIsNone(parse_public_request(
+            'Please <read_workspace_file><path>README.md</path></read_workspace_file>',
+            server, server['tools']))
+        self.assertIsNone(parse_public_request(
+            '<read_workspace_file><path><b>README.md</b></path></read_workspace_file>',
             server, server['tools']))
 
     def test_public_tool_bridge_discovers_and_calls_stdio_server(self):
