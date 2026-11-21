@@ -15,12 +15,17 @@ from child_policy import (MAX_MODEL_STEPS, MAX_TOOL_BATCH_CALLS, MAX_TOOL_ERRORS
                           ToolBudget, validate_request)
 from child_public_tools import call_tool, parse_requests
 from ready_roster import fetch_ready_roster
-from subagent_contract import child_system_prompt
+from subagent_contract import CONTRACT_VERSION, child_system_prompt, child_task_envelope
 from workspace_read_mcp import TOOLS as WORKSPACE_TOOL_DEFINITIONS
+from workspace_git_mcp import TOOLS as WORKSPACE_GIT_TOOL_DEFINITIONS
 
 
 WORKSPACE_TOOLS = ('list_workspace_files', 'find_workspace_files',
                    'read_workspace_file', 'search_workspace_text')
+WORKSPACE_GIT_TOOLS = ('get_workspace_git_status', 'get_workspace_git_log',
+                       'get_workspace_git_diff', 'get_workspace_git_commit',
+                       'compare_workspace_git_revisions',
+                       'read_workspace_file_at_revision', 'get_workspace_file_history')
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -63,14 +68,15 @@ def _message_text(packet: dict) -> str:
     return ''
 
 
-def _tool_instruction(server: dict) -> str:
+def _tool_instruction(server: dict, max_tool_calls: int) -> str:
     names = ['mcp__' + server['name'] + '__' + name for name in server['tools']]
-    return (' When tool evidence is needed, respond with only one JSON object shaped as '
-            '{"name":"ALLOWED_NAME","arguments":{...}}. Allowed names: ' +
-            json.dumps(names) + '. You may request at most ' + str(MAX_TOOL_BATCH_CALLS) +
-            ' independent calls in a leading XML batch. Never repeat a completed call, invent a '
-            'tool result, or continue reading after enough evidence exists. After results arrive, '
-            'answer the original task instead of replaying the tool plan.')
+    return (' TOOL PHASE CONTRACT: Request exactly one tool per turn. The entire response must be '
+            'one complete JSON object shaped as {"name":"ALLOWED_NAME","arguments":{...}}. '
+            'Do not use Markdown, XML, prose, or a second JSON object in that response. Allowed names: ' +
+            json.dumps(names) + f'. The entire assignment permits at most {max_tool_calls} tool call(s). '
+            'Never repeat a completed call, invent a tool result, or continue '
+            'reading after enough evidence exists. FINAL PHASE CONTRACT: after sufficient results arrive, '
+            'answer the assignment in prose and emit no tool request.')
 
 
 def _openai_tools(server: dict | None) -> list[dict]:
@@ -115,21 +121,24 @@ def _native_requests(packet: dict, server: dict) -> list[tuple[str, dict, str]]:
 def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
               agent_type: str, tool_profile: str = 'none', tool_server: dict | None = None,
               workspace_root: Path | None = None, max_tokens: int = 1024,
-              timeout_s: int = 180, cancel_path: Path | None = None,
+              timeout_s: int = 180, max_tool_calls: int = 12,
+              cancel_path: Path | None = None,
               complete=_completion) -> dict:
     """Run a bounded direct loop and return a model-neutral execution receipt."""
     if type(max_tokens) is not int or not 1 <= max_tokens <= 4096:
         raise ValueError('max_tokens must be between 1 and 4096')
     if type(timeout_s) is not int or not 1 <= timeout_s <= 600:
         raise ValueError('timeout_s must be between 1 and 600')
+    if type(max_tool_calls) is not int or not 1 <= max_tool_calls <= 12:
+        raise ValueError('max_tool_calls must be between 1 and 12')
     if tool_profile == 'none':
         if tool_server is not None:
             raise ValueError('tool-free run cannot have a tool server')
     elif not isinstance(tool_server, dict) or not tool_server.get('tools'):
         raise ValueError('tool profile requires an allowlisted tool server')
-    if tool_profile == 'workspace_read':
+    if tool_profile in ('workspace_read', 'workspace_git'):
         if workspace_root is None:
-            raise ValueError('workspace_read requires a workspace root')
+            raise ValueError(f'{tool_profile} requires a workspace root')
         workspace_root = workspace_root.resolve(strict=True)
 
     roster = fetch_ready_roster(gateway, os.environ.get('LLM_GATEWAY_API_KEY'))
@@ -142,10 +151,11 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
 
     system = child_system_prompt(agent_type, tool_profile)
     if tool_server:
-        system += _tool_instruction(tool_server)
+        system += _tool_instruction(tool_server, max_tool_calls)
     advertised_tools = _openai_tools(tool_server)
-    messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': prompt}]
-    budget = ToolBudget()
+    messages = [{'role': 'system', 'content': system},
+                {'role': 'user', 'content': child_task_envelope(prompt)}]
+    budget = ToolBudget(max_tool_calls)
     attempted: set[str] = set()
     tool_calls: list[dict] = []
     steps: list[dict] = []
@@ -221,8 +231,9 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             repair_attempted = True
             messages.append({'role': 'assistant', 'content': answer})
             messages.append({'role': 'user', 'content':
-                'No allowed tool call ran. Return exactly one allowed JSON tool request now. '
-                'Do not explain it and do not invent a result.'})
+                'TOOL FORMAT REPAIR: Return exactly one complete allowed JSON tool request now. '
+                'The entire response must be that single JSON object: no Markdown, XML, prose, or '
+                'second request. Do not invent a result.'})
             continue
 
         evidence_batch = []
@@ -243,6 +254,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             evidence_batch.append({'tool': name, 'arguments': arguments, 'result': evidence})
             if is_error:
                 tool_errors += 1
+                break
+            if budget.calls >= budget.max_calls:
                 break
         step['tool_calls'] = len(evidence_batch)
         if error:
@@ -272,7 +285,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                                  'content': json.dumps(row['result'], ensure_ascii=False)[:24000]})
         else:
             messages.append({'role': 'user', 'content': feedback})
-        if step_number >= MAX_MODEL_STEPS - 1:
+        if budget.calls >= budget.max_calls or step_number >= MAX_MODEL_STEPS - 1:
             tools_enabled = False
     else:
         error = 'model step limit reached'
@@ -281,6 +294,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         error = 'model did not execute an allowed tool'
     duration = round(time.monotonic() - started, 2)
     return {'engine': 'big-bertha-project-agent', 'engine_version': 1,
+            'task_contract_version': CONTRACT_VERSION,
             'route': route, 'model': expected_model, 'tool_profile': tool_profile,
             'answer': answer, 'error': error, 'duration_s': duration,
             'model_steps': len(steps), 'max_model_steps': MAX_MODEL_STEPS,
@@ -296,10 +310,11 @@ def main() -> int:
     parser.add_argument('--route', required=True)
     parser.add_argument('--model', required=True)
     parser.add_argument('--agent-type', choices=['coding', 'research'], required=True)
-    parser.add_argument('--tool-profile', choices=['none', 'workspace_read'], default='none')
+    parser.add_argument('--tool-profile', choices=['none', 'workspace_read', 'workspace_git'], default='none')
     parser.add_argument('--workspace-root', type=Path)
     parser.add_argument('--max-tokens', type=int, default=1024)
     parser.add_argument('--timeout', type=int, default=180)
+    parser.add_argument('--max-tool-calls', type=int, default=12)
     parser.add_argument('--out', required=True, type=Path)
     parser.add_argument('prompt')
     args = parser.parse_args()
@@ -312,11 +327,20 @@ def main() -> int:
                   'command': [os.fspath(Path(os.sys.executable)),
                               os.fspath(ROOT / 'tools/workspace_read_mcp.py'),
                               '--root', os.fspath(args.workspace_root.resolve(strict=True))]}
+    elif args.tool_profile == 'workspace_git':
+        if args.workspace_root is None:
+            parser.error('--workspace-root is required for workspace_git')
+        server = {'name': 'workspace_git', 'tools': list(WORKSPACE_GIT_TOOLS),
+                  'definitions': WORKSPACE_GIT_TOOL_DEFINITIONS,
+                  'command': [os.fspath(Path(os.sys.executable)),
+                              os.fspath(ROOT / 'tools/workspace_git_mcp.py'),
+                              '--root', os.fspath(args.workspace_root.resolve(strict=True))]}
     receipt = run_agent(gateway=args.gateway, route=args.route, expected_model=args.model,
                         prompt=args.prompt, agent_type=args.agent_type,
                         tool_profile=args.tool_profile, tool_server=server,
                         workspace_root=args.workspace_root, max_tokens=args.max_tokens,
-                        timeout_s=args.timeout, cancel_path=args.out.with_suffix('.cancel'))
+                        timeout_s=args.timeout, max_tool_calls=args.max_tool_calls,
+                        cancel_path=args.out.with_suffix('.cancel'))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(receipt, indent=2) + '\n')
     print(json.dumps(receipt, indent=2))

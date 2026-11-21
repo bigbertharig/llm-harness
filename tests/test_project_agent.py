@@ -20,6 +20,80 @@ def packet(text, finish='stop', usage=None):
 
 
 class ProjectAgentTests(unittest.TestCase):
+    def test_strict_task_envelope_and_one_call_contract_reach_model(self):
+        seen = []
+        request = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
+                              'arguments': {'path': 'README.md'}})
+        replies = iter([packet(request), packet('Result. Evidence: README.md. Verification: read.')])
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
+                  'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
+                                   'inputSchema': {'type': 'object'}}],
+                  'command': ['fixture']}
+        def complete(_gateway, _route, messages, _max_tokens, _timeout, _key, _tools):
+            seen.append(list(messages))
+            return next(replies)
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool', return_value={
+                 'isError': False, 'structuredContent': {'path': 'README.md'}}):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='inspect ownership', agent_type='coding', tool_profile='workspace_read',
+                tool_server=server, workspace_root=Path(temp), complete=complete)
+        self.assertEqual(result['task_contract_version'], 2)
+        self.assertIn('Request exactly one tool per turn', seen[0][0]['content'])
+        self.assertIn('ASSIGNMENT (contract v2)', seen[0][1]['content'])
+        self.assertIn('Do not claim an edit, test, command, or verification', seen[0][1]['content'])
+
+    def test_task_tool_budget_forces_final_synthesis(self):
+        calls = [
+            json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
+                        'arguments': {'path': 'README.md', 'start_line': line}})
+            for line in (1, 50)]
+        replies = iter([packet(calls[0]), packet(calls[1]), packet('Enough evidence.')])
+        advertised = []
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
+                  'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
+                                   'inputSchema': {'type': 'object'}}], 'command': ['fixture']}
+        def complete(_gateway, _route, _messages, _max_tokens, _timeout, _key, tools):
+            advertised.append(tools)
+            return next(replies)
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool', return_value={
+                 'isError': False, 'structuredContent': {'path': 'README.md'}}):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='inspect', agent_type='coding', tool_profile='workspace_read',
+                tool_server=server, workspace_root=Path(temp), max_tool_calls=2,
+                complete=complete)
+        self.assertIsNone(result['error'])
+        self.assertEqual(result['tool_calls'], 2)
+        self.assertEqual(result['tool_budget']['max_calls'], 2)
+        self.assertEqual(advertised[-1], [])
+
+    def test_workspace_git_prompt_and_policy_stay_separate_from_file_reads(self):
+        server = {'name': 'workspace_git', 'tools': ['get_workspace_git_log'],
+                  'definitions': [{'name': 'get_workspace_git_log', 'description': 'Log',
+                                   'inputSchema': {'type': 'object'}}],
+                  'command': ['fixture']}
+        replies = iter([
+            packet('{"name":"mcp__workspace_git__get_workspace_git_log",'
+                   '"arguments":{"limit":2}}'),
+            packet('The latest two commits are A and B.'),
+        ])
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool', return_value={
+                 'isError': False, 'structuredContent': {'commits': ['A', 'B']}}):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='inspect history', agent_type='coding', tool_profile='workspace_git',
+                tool_server=server, workspace_root=Path(temp), complete=lambda *_: next(replies))
+        self.assertIsNone(result['error'])
+        self.assertEqual(result['tool_call_summary'][0]['tool'], 'get_workspace_git_log')
+        self.assertEqual(result['answer'], 'The latest two commits are A and B.')
+
     def test_tool_free_answer_uses_project_engine_and_ready_output_limit(self):
         seen = []
         def complete(_gateway, _route, _messages, max_tokens, _timeout, _key, _tools):

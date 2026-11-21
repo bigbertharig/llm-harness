@@ -25,6 +25,11 @@ def validate_request(profile: str, tool: str, arguments: dict, workspace_root: P
     allowed = {'public_research': {'search_web', 'fetch_page'},
                'workspace_read': {'list_workspace_files', 'find_workspace_files',
                                   'read_workspace_file', 'search_workspace_text'},
+               'workspace_git': {'get_workspace_git_status', 'get_workspace_git_log',
+                                 'get_workspace_git_diff', 'get_workspace_git_commit',
+                                 'compare_workspace_git_revisions',
+                                 'read_workspace_file_at_revision',
+                                 'get_workspace_file_history'},
                'google_workspace': {'search_mail', 'read_mail', 'send_email',
                                     'search_drive', 'read_drive_text', 'create_drive_folder',
                                     'upload_drive_text', 'upload_drive_image', 'create_google_doc',
@@ -42,12 +47,15 @@ def validate_request(profile: str, tool: str, arguments: dict, workspace_root: P
 
 
 class ToolBudget:
-    def __init__(self):
+    def __init__(self, max_calls: int = MAX_TOOL_CALLS):
+        if type(max_calls) is not int or not 1 <= max_calls <= MAX_TOOL_CALLS:
+            raise ValueError(f'max_calls must be between 1 and {MAX_TOOL_CALLS}')
+        self.max_calls = max_calls
         self.calls = 0
         self.result_bytes = 0
 
     def before_call(self) -> None:
-        if self.calls >= MAX_TOOL_CALLS:
+        if self.calls >= self.max_calls:
             raise ValueError('child exceeded its tool-call limit')
 
     def record(self, result: dict) -> int:
@@ -59,7 +67,7 @@ class ToolBudget:
         return size
 
     def receipt(self) -> dict:
-        return {'max_calls': MAX_TOOL_CALLS, 'max_result_bytes': MAX_TOOL_RESULT_BYTES,
+        return {'max_calls': self.max_calls, 'max_result_bytes': MAX_TOOL_RESULT_BYTES,
                 'max_total_bytes': MAX_TOTAL_TOOL_BYTES, 'calls': self.calls,
                 'result_bytes': self.result_bytes}
 

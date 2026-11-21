@@ -55,6 +55,8 @@ TOOL = {'name': 'delegate_task',
                                     'description': 'Concrete conditions the child result must satisfy.'},
             'verification': {'type': 'string', 'minLength': 1, 'maxLength': 1000,
                              'description': 'Checks the child should perform or evidence it should return.'},
+            'max_tool_calls': {'type': 'integer', 'minimum': 1, 'maximum': 12,
+                               'description': 'Maximum tool calls for this task. Use the smallest evidence budget that can complete it.'},
             'candidate_id': {'type': 'string', 'minLength': 1, 'maxLength': 80,
                              'description': 'Optional candidate returned by list_local_agents; omit to use the loaded shared model.'},
             'minimum_context_tokens': {'type': 'integer', 'minimum': 1, 'maximum': 262144,
@@ -64,8 +66,8 @@ TOOL = {'name': 'delegate_task',
             'worker_strategy': {'type': 'string',
                                 'enum': ['auto', 'shared_model', 'separate_model'],
                                 'description': 'auto lets Gateway choose; shared_model requires another context in the loaded model; separate_model requests an independently loaded small model.'},
-            'tool_profile': {'type': 'string', 'enum': ['none', 'public_research', 'workspace_read', 'google_workspace'],
-                             'description': 'Use workspace_read for repository evidence, public_research for public web evidence, or google_workspace for the dedicated rig account.'}},
+            'tool_profile': {'type': 'string', 'enum': ['none', 'public_research', 'workspace_read', 'workspace_git', 'google_workspace'],
+                             'description': 'Use workspace_read for current repository files, workspace_git for local history and diffs, public_research for public web evidence, or google_workspace for the dedicated rig account.'}},
             'required': ['agent_type', 'task'], 'additionalProperties': False}}
 if config.cloud_parent:
     TOOL['description'] = ('Spawn one bounded coding or research agent on the loaded shared model when available. '
@@ -74,7 +76,8 @@ if config.cloud_parent:
                            'Set tool_profile=public_research to give the child public search and page fetch; '
                            'Set tool_profile=google_workspace for the generic Gmail, Drive, Docs, and Sheets tools; '
                            'Set tool_profile=workspace_read to let the child list and read only the selected '
-                           'coding workspace. Otherwise it has no tools. Verify its answer.')
+                           'coding workspace, or workspace_git for bounded read-only local Git evidence. '
+                           'Otherwise it has no tools. Verify its answer.')
 else:
     TOOL['inputSchema']['properties'].pop('candidate_id')
     TOOL['description'] = ('Use only when the user asks to spawn or delegate to an agent. '
@@ -83,10 +86,11 @@ else:
 if not config.workspace_root:
     TOOL['inputSchema']['properties']['tool_profile']['enum'] = ['none', 'public_research', 'google_workspace']
 if config.coding_only:
-    TOOL['inputSchema']['properties']['tool_profile']['enum'] = ['none', 'workspace_read']
+    TOOL['inputSchema']['properties']['tool_profile']['enum'] = ['none', 'workspace_read', 'workspace_git']
     TOOL['description'] = ('Give one bounded coding or research task to a local GPU child. '
                            'The child may read and search only the selected workspace with '
-                           'tool_profile=workspace_read; no public web tools are available. '
+                           'tool_profile=workspace_read or inspect local history with workspace_git; '
+                           'no public web tools are available. '
                            'The manager selects the model route and GPUs. Verify its answer.')
 
 LIST_TOOL = {'name': 'list_local_agents',
@@ -140,6 +144,7 @@ def handle(packet):
         task = arguments.get('task')
         acceptance_criteria = arguments.get('acceptance_criteria')
         verification = arguments.get('verification')
+        max_tool_calls = arguments.get('max_tool_calls', 12)
         agent_type = arguments.get('agent_type')
         candidate_id = arguments.get('candidate_id')
         min_context = arguments.get('minimum_context_tokens', 4096)
@@ -152,6 +157,7 @@ def handle(packet):
                     or not 1 <= len(acceptance_criteria) <= 2000))
                 or (verification is not None and (not isinstance(verification, str)
                     or not 1 <= len(verification) <= 1000))
+                or type(max_tool_calls) is not int or not 1 <= max_tool_calls <= 12
                 or (candidate_id is not None and (not isinstance(candidate_id, str)
                     or not 1 <= len(candidate_id) <= 80))
                 or type(min_context) is not int or not 1 <= min_context <= 262144
@@ -181,6 +187,7 @@ def handle(packet):
                 active_child_dir = root / child_id
                 result = run_child(parent_id=parent, agent_type=agent_type, prompt=assigned_task,
                                    out=active_child_dir, gateway=gateway,
+                                   max_tool_calls=max_tool_calls,
                                    candidate_id=candidate_id, tool_profile=tool_profile,
                                    workspace_root=config.workspace_root, min_context=min_context,
                                    context_tokens=context_tokens, worker_strategy=worker_strategy)

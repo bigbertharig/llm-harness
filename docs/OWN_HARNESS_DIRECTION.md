@@ -17,6 +17,14 @@ batch to four calls and each run to six model turns, rejects duplicate execution
 forces a final tool-free synthesis turn when a model replays a completed call,
 and records a model-neutral receipt. This is the production development path.
 
+Delegated tasks use a versioned model-neutral assignment contract: objective,
+operating rules, evidence, verification, and limitations. The model-facing tool
+phase requests exactly one complete JSON tool call per turn even though the
+parser retains bounded legacy batch compatibility. A parent may lower the
+per-task tool-call budget from the twelve-call ceiling; reaching that budget
+disables tools and forces final synthesis from collected evidence. Receipts
+record both the task-contract version and effective tool budget.
+
 Candidate controllers and their historical runners remain together in
 `research/external_harnesses/` for reference. That directory is optional: the
 runtime, public tool catalog, default tests, and project-owned trials must still

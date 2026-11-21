@@ -191,6 +191,31 @@ class GatewaySubagentRequest(unittest.TestCase):
                           out=root / 'child', gateway='http://127.0.0.1:8080',
                           tool_profile='workspace_read')
 
+    def test_workspace_git_profile_is_bound_to_selected_root(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = root / 'agent'
+            agent.mkdir()
+            workspace = root / 'workspace'
+            workspace.mkdir()
+            names = ('get_workspace_git_status', 'get_workspace_git_log',
+                     'get_workspace_git_diff', 'get_workspace_git_commit',
+                     'compare_workspace_git_revisions', 'read_workspace_file_at_revision',
+                     'get_workspace_file_history')
+            registry = root / 'registry.json'
+            registry.write_text(json.dumps({'surfaces': {'workspace_git': {
+                'status': 'dashboard',
+                'tools': [{'name': name, 'approval': 'automatic'} for name in names]}}}))
+            server = root / 'workspace_git_mcp.py'
+            server.write_text('')
+            with patch.object(gateway_subagent, 'TOOL_REGISTRY', registry), \
+                 patch.object(gateway_subagent, 'WORKSPACE_GIT_SERVER', server):
+                flags = gateway_subagent._child_tools(agent, root, 'workspace_git', workspace)
+            self.assertEqual(flags, ['--no-tools', '--no-mcp'])
+            config = json.loads((agent / 'mcp.json').read_text())['mcpServers']['workspace_git']
+            self.assertEqual(config['args'], [str(server), '--root', str(workspace)])
+            self.assertEqual(set(config['toolExposure']), set(names))
+
     def test_google_profile_uses_same_catalog_for_any_local_model(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -366,7 +391,7 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertEqual(set(tools[1]['inputSchema']['properties']),
                          {'agent_type', 'task', 'acceptance_criteria', 'verification',
                           'minimum_context_tokens', 'context_tokens', 'worker_strategy',
-                          'tool_profile'})
+                          'tool_profile', 'max_tool_calls'})
         self.assertEqual(tools[1]['inputSchema']['properties']['agent_type']['enum'],
                          ['coding', 'research'])
 
@@ -386,7 +411,7 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertEqual(set(tool['inputSchema']['properties']),
                          {'agent_type', 'task', 'acceptance_criteria', 'verification',
                           'candidate_id', 'minimum_context_tokens', 'context_tokens',
-                          'worker_strategy', 'tool_profile'})
+                          'worker_strategy', 'tool_profile', 'max_tool_calls'})
         self.assertEqual(tool['inputSchema']['properties']['candidate_id']['maxLength'], 80)
         self.assertIn('loaded shared model', tool['description'])
         self.assertEqual(tool['inputSchema']['properties']['tool_profile']['enum'],
@@ -402,6 +427,7 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         tools = json.loads(proc.stdout)['result']['tools']
         self.assertIn('workspace_read', tools[1]['inputSchema']['properties']['tool_profile']['enum'])
+        self.assertIn('workspace_git', tools[1]['inputSchema']['properties']['tool_profile']['enum'])
 
 
 if __name__ == '__main__':

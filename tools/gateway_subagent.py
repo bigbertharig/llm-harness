@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TOOL_REGISTRY = ROOT / 'tools/tool_registry.json'
 SEARCH_SERVER = ROOT / 'mcp_servers/rig_search/mcp_server.py'
 WORKSPACE_SERVER = ROOT / 'tools/workspace_read_mcp.py'
+WORKSPACE_GIT_SERVER = ROOT / 'tools/workspace_git_mcp.py'
 GOOGLE_SERVER = ROOT / 'tools/google_workspace_mcp.py'
 
 
@@ -46,7 +47,7 @@ def _validate_child_tools(tool_profile: str, workspace_root: Path | None = None)
     """Fail before route allocation when a requested child tool surface is unavailable."""
     if tool_profile == 'none':
         return
-    if tool_profile not in ('public_research', 'workspace_read', 'google_workspace'):
+    if tool_profile not in ('public_research', 'workspace_read', 'workspace_git', 'google_workspace'):
         raise ValueError('unknown child tool profile')
     registry = json.loads(TOOL_REGISTRY.read_text())
     if tool_profile == 'public_research':
@@ -68,6 +69,17 @@ def _validate_child_tools(tool_profile: str, workspace_root: Path | None = None)
                 workspace_root is None or not workspace_root.is_dir() or
                 not WORKSPACE_SERVER.is_file()):
             raise ValueError('workspace read tools or selected root are unavailable')
+    elif tool_profile == 'workspace_git':
+        names = ('get_workspace_git_status', 'get_workspace_git_log',
+                 'get_workspace_git_diff', 'get_workspace_git_commit',
+                 'compare_workspace_git_revisions', 'read_workspace_file_at_revision',
+                 'get_workspace_file_history')
+        surface = registry['surfaces']['workspace_git']
+        approved = {row['name'] for row in surface['tools'] if row.get('approval') == 'automatic'}
+        if (surface.get('status') != 'dashboard' or approved != set(names) or
+                workspace_root is None or not workspace_root.is_dir() or
+                not WORKSPACE_GIT_SERVER.is_file()):
+            raise ValueError('workspace Git tools or selected root are unavailable')
     else:
         surface = registry['surfaces']['google_workspace']
         approved = {row['name'] for row in surface['tools'] if row.get('approval') == 'automatic'}
@@ -93,6 +105,13 @@ def _child_tools(agent: Path, out: Path, tool_profile: str,
         names = ('list_workspace_files', 'find_workspace_files', 'read_workspace_file',
                  'search_workspace_text')
         args = [str(WORKSPACE_SERVER), '--root', str(workspace_root)]
+    elif tool_profile == 'workspace_git':
+        server_name = 'workspace_git'
+        names = ('get_workspace_git_status', 'get_workspace_git_log',
+                 'get_workspace_git_diff', 'get_workspace_git_commit',
+                 'compare_workspace_git_revisions', 'read_workspace_file_at_revision',
+                 'get_workspace_file_history')
+        args = [str(WORKSPACE_GIT_SERVER), '--root', str(workspace_root)]
     else:
         server_name = 'google_workspace'
         surface = json.loads(TOOL_REGISTRY.read_text())['surfaces'][server_name]
@@ -189,11 +208,14 @@ def _release_ephemeral(gateway: str, parent_id: str, child: dict) -> dict:
 @guard_child_run
 def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gateway: str,
               max_tokens: int = 1536, timeout_s: int = 300,
+              max_tool_calls: int = 12,
               candidate_id: str | None = None, tool_profile: str = 'none',
               workspace_root: Path | None = None, min_context: int = 4096,
               context_tokens: int | None = None, worker_strategy: str = 'auto') -> dict:
     if max_tokens < 1 or max_tokens > 4096 or timeout_s < 1 or timeout_s > 600:
         raise ValueError('child budget outside allowed bounds')
+    if type(max_tool_calls) is not int or not 1 <= max_tool_calls <= 12:
+        raise ValueError('max_tool_calls must be between 1 and 12')
     if type(min_context) is not int or not 1 <= min_context <= 262144:
         raise ValueError('minimum context must be between 1 and 262144 tokens')
     if context_tokens is not None and (type(context_tokens) is not int
@@ -201,11 +223,11 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
         raise ValueError('requested context must be 16384..262144 and meet the minimum')
     if worker_strategy not in ('auto', 'shared_model', 'separate_model'):
         raise ValueError('unknown worker strategy')
-    if tool_profile not in ('none', 'public_research', 'workspace_read', 'google_workspace'):
+    if tool_profile not in ('none', 'public_research', 'workspace_read', 'workspace_git', 'google_workspace'):
         raise ValueError('unknown child tool profile')
-    if tool_profile == 'workspace_read':
+    if tool_profile in ('workspace_read', 'workspace_git'):
         if workspace_root is None:
-            raise ValueError('workspace read profile requires a selected root')
+            raise ValueError(f'{tool_profile} profile requires a selected root')
         workspace_root = workspace_root.resolve(strict=True)
         if not workspace_root.is_dir():
             raise ValueError('selected workspace root is not a directory')
@@ -257,6 +279,7 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
             prompt=prompt, agent_type=agent_type, tool_profile=tool_profile,
             tool_server=tool_bridge, workspace_root=workspace_root,
             max_tokens=max_tokens, timeout_s=timeout_s,
+            max_tool_calls=max_tool_calls,
             cancel_path=out.with_suffix('.cancel'))
         (out / 'project_agent.json').write_text(json.dumps(project, indent=2) + '\n')
         answer, error = project['answer'], project['error']
@@ -278,6 +301,7 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
                    'requested_context_tokens': context_tokens,
                    'requested_worker_strategy': worker_strategy,
                    'engine': project['engine'], 'engine_version': project['engine_version'],
+                   'task_contract_version': project.get('task_contract_version', 1),
                    'tool_mode': 'project_agent' if tool_profile != 'none' else 'none',
                    'tool_calls': project['tool_calls'],
                    'tool_call_summary': project['tool_call_summary'],
@@ -318,7 +342,8 @@ def main() -> int:
     parser.add_argument('--out', required=True, type=Path)
     parser.add_argument('--max-tokens', type=int, default=1536)
     parser.add_argument('--timeout', type=int, default=300)
-    parser.add_argument('--tool-profile', choices=['none', 'public_research', 'workspace_read'], default='none')
+    parser.add_argument('--max-tool-calls', type=int, default=12)
+    parser.add_argument('--tool-profile', choices=['none', 'public_research', 'workspace_read', 'workspace_git'], default='none')
     parser.add_argument('--workspace-root', type=Path)
     parser.add_argument('--min-context', type=int, default=4096)
     parser.add_argument('--worker-strategy', choices=['auto', 'shared_model', 'separate_model'], default='auto')
@@ -327,6 +352,7 @@ def main() -> int:
     result = run_child(parent_id=args.parent_route, agent_type=args.agent_type,
                        prompt=args.prompt, out=args.out, gateway=args.gateway,
                        max_tokens=args.max_tokens, timeout_s=args.timeout,
+                       max_tool_calls=args.max_tool_calls,
                        candidate_id=args.candidate_id, tool_profile=args.tool_profile,
                        workspace_root=args.workspace_root, min_context=args.min_context,
                        worker_strategy=args.worker_strategy)
