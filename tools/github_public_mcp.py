@@ -43,6 +43,24 @@ TOOLS = [
          'start_line': {'type': 'integer', 'minimum': 1, 'maximum': 50000},
          'max_lines': {'type': 'integer', 'minimum': 1, 'maximum': 300}},
          'required': ['repository', 'revision', 'path'], 'additionalProperties': False}},
+    {'name': 'get_github_commit', 'description': 'Inspect metadata and bounded changed paths for one pinned public GitHub commit.',
+     'annotations': {'readOnlyHint': True}, 'inputSchema': {'type': 'object', 'properties': {
+         'repository': {'type': 'string', 'minLength': 3, 'maxLength': 250},
+         'revision': {'type': 'string', 'minLength': 40, 'maxLength': 40}},
+         'required': ['repository', 'revision'], 'additionalProperties': False}},
+    {'name': 'compare_github_revisions', 'description': 'Compare two pinned commits in one public GitHub repository and return bounded commit and changed-file summaries.',
+     'annotations': {'readOnlyHint': True}, 'inputSchema': {'type': 'object', 'properties': {
+         'repository': {'type': 'string', 'minLength': 3, 'maxLength': 250},
+         'base': {'type': 'string', 'minLength': 40, 'maxLength': 40},
+         'head': {'type': 'string', 'minLength': 40, 'maxLength': 40}},
+         'required': ['repository', 'base', 'head'], 'additionalProperties': False}},
+    {'name': 'get_github_file_history', 'description': 'List bounded commits affecting one path at or before a pinned public GitHub commit.',
+     'annotations': {'readOnlyHint': True}, 'inputSchema': {'type': 'object', 'properties': {
+         'repository': {'type': 'string', 'minLength': 3, 'maxLength': 250},
+         'revision': {'type': 'string', 'minLength': 40, 'maxLength': 40},
+         'path': {'type': 'string', 'minLength': 1, 'maxLength': 300},
+         'limit': {'type': 'integer', 'minimum': 1, 'maximum': 20}},
+         'required': ['repository', 'revision', 'path'], 'additionalProperties': False}},
 ]
 
 
@@ -213,7 +231,7 @@ def call(name: str, args: dict) -> dict:
                 'default_branch': branch, 'revision': revision, 'archived': info.get('archived'),
                 'updated_at': info.get('pushed_at'), 'language': info.get('language'),
                 'root_entries': entries, 'root_truncated': len(root) > 100, 'readme_preview': preview}
-    revision = _revision(args['revision'])
+    revision = _revision(args['revision']) if 'revision' in args else None
     if name == 'list_github_directory':
         path = _path(args.get('path', ''))
         rows = _contents(base, path, revision)
@@ -243,6 +261,53 @@ def call(name: str, args: dict) -> dict:
             raise ValueError('path is not a file')
         return {'repository': f'{owner}/{repo}', 'revision': revision,
                 **_text(content, start_line=start, max_lines=count, base=base, revision=revision)}
+    if name == 'get_github_commit':
+        revision = _revision(args['revision'])
+        row = _request(f'{base}/commits/{revision}?per_page=100')
+        commit = row.get('commit') or {}
+        author = commit.get('author') or {}
+        files = row.get('files') or []
+        return {'repository': f'{owner}/{repo}', 'revision': _revision(row.get('sha')),
+                'parents': [_revision(parent['sha']) for parent in row.get('parents') or []],
+                'author': author.get('name'), 'authored_at': author.get('date'),
+                'subject': str(commit.get('message') or '').splitlines()[0],
+                'stats': row.get('stats') or {},
+                'changes': [{'path': item.get('filename'), 'status': item.get('status'),
+                             'previous_path': item.get('previous_filename'),
+                             'additions': item.get('additions'), 'deletions': item.get('deletions')}
+                            for item in files[:100] if isinstance(item, dict)],
+                'truncated': len(files) >= 100}
+    if name == 'compare_github_revisions':
+        base_revision, head_revision = _revision(args['base']), _revision(args['head'])
+        row = _request(f'{base}/compare/{base_revision}...{head_revision}?per_page=100')
+        commits, files = row.get('commits') or [], row.get('files') or []
+        return {'repository': f'{owner}/{repo}', 'base': base_revision, 'head': head_revision,
+                'status': row.get('status'), 'ahead_by': row.get('ahead_by'),
+                'behind_by': row.get('behind_by'), 'total_commits': row.get('total_commits'),
+                'commits': [{'revision': _revision(item['sha']),
+                             'subject': str((item.get('commit') or {}).get('message') or '').splitlines()[0]}
+                            for item in commits[:100] if isinstance(item, dict)],
+                'changes': [{'path': item.get('filename'), 'status': item.get('status'),
+                             'previous_path': item.get('previous_filename'),
+                             'additions': item.get('additions'), 'deletions': item.get('deletions')}
+                            for item in files[:100] if isinstance(item, dict)],
+                'truncated': len(commits) >= 100 or len(files) >= 100
+                             or (isinstance(row.get('total_commits'), int)
+                                 and row['total_commits'] > len(commits))}
+    if name == 'get_github_file_history':
+        revision, path, limit = _revision(args['revision']), _path(args['path'], required=True), args.get('limit', 8)
+        if type(limit) is not int or not 1 <= limit <= 20:
+            raise ValueError('history limit must be 1–20')
+        encoded_path = quote(path, safe='')
+        rows = _request(f'{base}/commits?sha={revision}&path={encoded_path}&per_page={limit}')
+        if not isinstance(rows, list):
+            raise ValueError('GitHub returned invalid file history')
+        return {'repository': f'{owner}/{repo}', 'revision': revision, 'path': path,
+                'commits': [{'revision': _revision(row['sha']),
+                             'authored_at': ((row.get('commit') or {}).get('author') or {}).get('date'),
+                             'subject': str((row.get('commit') or {}).get('message') or '').splitlines()[0]}
+                            for row in rows[:limit] if isinstance(row, dict)],
+                'truncated': len(rows) >= limit}
     raise ValueError('unknown GitHub tool')
 
 

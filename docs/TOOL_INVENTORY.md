@@ -1,16 +1,16 @@
 # Harness tool inventory
 
-Updated 2026-11-18. [Tool families](TOOL_FAMILIES.md) defines the current organization and promotion path. Ownership, origin, family, and availability are separate fields in `tools/tool_registry.json`. `tools/tool_fixtures.json` records the diagnostics test server, and `tools/dashboard_tool_catalog.json` is the generated projection. Gateway then applies separate Chat and Coding allowlists. The detailed notes below include historical test evidence; the registry controls current availability.
+Updated 2026-11-20. [Tool families](TOOL_FAMILIES.md) defines the current organization and promotion path. Ownership, origin, family, and availability are separate fields in `tools/tool_registry.json`. `tools/tool_fixtures.json` records the diagnostics test server, and `tools/dashboard_tool_catalog.json` is the generated projection. Gateway then applies separate Chat and Coding allowlists. The detailed notes below include historical test evidence; the registry controls current availability.
 
 Change-scoped tests are named in `tests/suites.json` and run with `python tools/run_test_suite.py <suite>`. Use `--list` to inspect them. The `google_workspace` suite deliberately selects only the MCP schema, delegated-child loop/policy, and catalog contracts changed by that integration. Repository-wide `.venv/bin/python -m pytest -q` is also safe: `pytest.ini` excludes ignored receipts and archived candidate results and includes the current `rig_search` contracts.
 
 | Ownership | Surfaces | Tool entries | Currently in dashboard chat |
 | --- | ---: | ---: | ---: |
-| Internal rig tools | 9 | 24 | 20 |
-| External integrations | 6 | 36 | 4 public GitHub tools; 13 Google tools when OAuth is configured |
+| Internal rig tools | 9 | 28 | 24 |
+| External integrations | 6 | 40 | 7 public GitHub tools; 14 Google tools when OAuth is configured |
 | Diagnostics fixture | 1 | 6 | 0 |
 
-All 66 registry and fixture names are distinct. Prototype tools are available to tests. Dashboard export contains 37 enabled names across ten surfaces; Gateway narrows these by mode. Google tools require Gateway OAuth configuration; expanding the dedicated account from read-only to write access requires a fresh grant.
+All 74 registry and fixture names are distinct. Prototype tools are available to tests. Dashboard export contains 45 enabled names across ten surfaces; Gateway narrows these by mode. Google tools require Gateway OAuth configuration; expanding the dedicated account from read-only to write access requires a fresh grant.
 
 ## Internal tools
 
@@ -20,9 +20,9 @@ All 66 registry and fixture names are distinct. Prototype tools are available to
 | `local_agents` | Dashboard + prototype | `list_local_agents`, `delegate_task`; prototype `delegate_fixture_task` |
 | `rig_info` | Dashboard | `get_rig_status`, `get_model_status`, `get_benchmark_status`, `get_orchestration_status`, `get_orchestration_diagnostics`, `get_orchestration_activity` |
 | `workspace_read` | Dashboard Coding and delegated coding children | `list_workspace_files`, `find_workspace_files`, `read_workspace_file`, `search_workspace_text` |
-| `workspace_git` | Dashboard Coding | `get_workspace_git_status`, `get_workspace_git_log`, `get_workspace_git_diff` |
+| `workspace_git` | Dashboard Coding | Status, log, working-tree diff, commit inspection, revision comparison, historical file read, file history |
 | `google_workspace` | Dashboard Chat and delegated Chat children, auth gated | Gmail search/read/send; Drive search/read/create-folder/upload-text; Docs create/append; Sheets create/read/update/append |
-| `github_public` | Dashboard Chat | `inspect_github_repo`, `list_github_directory`, `find_github_files`, `read_github_file` |
+| `github_public` | Dashboard Chat | Public repository inspect/list/find/read plus pinned commit inspection, comparison, and file history |
 | `local_rag_fixture` | Prototype | `search_passages` |
 | `diagnostics` | Test fixture | `read_marker`, `read_structured_marker`, `calculate_sum`, `calculate_product`, `get_entry`, `get_nested_entry` |
 
@@ -40,7 +40,9 @@ The first two are the live public search tools. The prototype tools run against 
 
 `search_passages` is a Chroma RAG fixture over an isolated eight-passage corpus. It tests passage filters and citation IDs. It is distinct from public web search and is not enabled in dashboard chat. The 2026-11-05 comparison passed 23/24 adjudicated cases; that small fixture does not establish a production local index. Its prototype record lives in the unified registry so it can follow the same review path when a real local index is ready.
 
-`workspace_read` serves only an explicitly selected Coding workspace and is exported for Coding turns. Chat does not receive it. `workspace_git` has the same selected-workspace boundary and offers only bounded read-only Git inspection.
+`workspace_read` serves only an explicitly selected Coding workspace and is exported for Coding turns. Chat does not receive it. `workspace_git` has the same selected-repository-root boundary. It builds on the installed Git CLI with optional locks, pagers, external diffs, text conversion, and inherited `GIT_*` overrides disabled. Revisions are limited to `HEAD` or returned hexadecimal commit IDs. Historical reads use Git blobs directly, require bounded UTF-8 text, and never check out a revision. The local adapter does not fetch, invoke hooks, change refs, stage files, or modify the working tree.
+
+The separate `github_public` adapter builds on GitHub's public REST API. Repository inspection resolves the default branch to a full commit ID; every follow-up content/history operation requires a pinned 40-character SHA. Redirect hosts, repository paths, response sizes, and UTF-8 reads are bounded. It does not accept arbitrary Git URLs, credentials, private repositories, or mutation operations. A future GitLab adapter should retain this provider-specific boundary rather than broadening GitHub tools into a generic network clone command.
 
 ### Delegate
 
@@ -96,7 +98,7 @@ The current hosted server is `https://app.daedalmap.com/mcp?registry=site`, with
 
 ## Counts and handoff
 
-The unified registry currently has **15 surfaces and 51 named entries**. The diagnostics fixture adds **1 surface and 6 tools**. The dashboard projection enables **28 tools across 10 surfaces**, subject to Gateway mode and credential gates. Earlier counts described the 2026-11-15 snapshot and are superseded by the registry.
+The unified registry currently has **15 surfaces and 68 named entries**. The diagnostics fixture adds **1 surface and 6 tools**. The dashboard projection enables **45 tools across 10 surfaces**, subject to Gateway mode and credential gates. Earlier counts are superseded by the registry.
 
 Harness exports the currently enabled projection with `python3 tools/export_dashboard_tool_catalog.py sync`. Gateway and benchmarking each use their own `sync_harness_tools.py --source ... what-new|sync|check` importer and keep a hash-pinned local snapshot. Gateway runtime reads its snapshot and the MCP server's live `tools/list` argument schema. Benchmarking uses the snapshot as a test input and records canonical model ID, served route, catalog hash, tool name, argument validity, result, and answer quality. Orchestration receives model load instructions and needs no tool catalog.
 

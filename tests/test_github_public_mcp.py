@@ -9,6 +9,7 @@ import github_public_mcp as github
 
 
 SHA = 'a' * 40
+SHA2 = 'c' * 40
 
 
 def test_public_repo_inspection_and_pinned_file_reads(monkeypatch):
@@ -33,6 +34,19 @@ def test_public_repo_inspection_and_pinned_file_reads(monkeypatch):
         if path == f'/repos/example/project/git/trees/{SHA}?recursive=1':
             return {'tree': [{'type': 'blob', 'path': 'README.md'},
                              {'type': 'blob', 'path': 'src/main.py'}], 'truncated': False}
+        if path == f'/repos/example/project/commits/{SHA}?per_page=100':
+            return {'sha': SHA, 'commit': {'author': {'name': 'Example', 'date': '2026-01-01T00:00:00Z'},
+                    'message': 'Initial subject\n\nBody'}, 'parents': [], 'stats': {'total': 2},
+                    'files': [{'filename': 'README.md', 'status': 'added',
+                               'additions': 2, 'deletions': 0}]}
+        if path == f'/repos/example/project/compare/{SHA}...{SHA2}?per_page=100':
+            return {'status': 'ahead', 'ahead_by': 1, 'behind_by': 0, 'total_commits': 1,
+                    'commits': [{'sha': SHA2, 'commit': {'message': 'Second'}}],
+                    'files': [{'filename': 'README.md', 'status': 'modified',
+                               'additions': 1, 'deletions': 1}]}
+        if path == f'/repos/example/project/commits?sha={SHA2}&path=README.md&per_page=1':
+            return [{'sha': SHA2, 'commit': {'author': {'date': '2026-01-02T00:00:00Z'},
+                                             'message': 'Second'}}]
         raise AssertionError(path)
 
     monkeypatch.setattr(github, '_request', fake_request)
@@ -47,6 +61,14 @@ def test_public_repo_inspection_and_pinned_file_reads(monkeypatch):
     read = github.call('read_github_file', {'repository': 'example/project', 'revision': SHA,
                                             'path': 'README.md', 'start_line': 2, 'max_lines': 1})
     assert read['content'] == 'world\n'
+    commit = github.call('get_github_commit', {'repository': 'example/project', 'revision': SHA})
+    assert commit['subject'] == 'Initial subject' and commit['changes'][0]['path'] == 'README.md'
+    comparison = github.call('compare_github_revisions', {
+        'repository': 'example/project', 'base': SHA, 'head': SHA2})
+    assert comparison['ahead_by'] == 1 and comparison['commits'][0]['revision'] == SHA2
+    history = github.call('get_github_file_history', {
+        'repository': 'example/project', 'revision': SHA2, 'path': 'README.md', 'limit': 1})
+    assert history['commits'][0]['subject'] == 'Second'
     assert all(path.startswith('/repos/example/project/') or path == '/repos/example/project' for path in calls)
 
 
@@ -67,7 +89,8 @@ def test_invalid_revision_and_path_are_rejected_before_network(monkeypatch):
     with pytest.raises(ValueError):
         github.call('read_github_file', {'repository': 'example/project', 'revision': SHA, 'path': '../README.md'})
     assert [tool['name'] for tool in github.handle({'id': 1, 'method': 'tools/list'})['result']['tools']] == [
-        'inspect_github_repo', 'list_github_directory', 'find_github_files', 'read_github_file']
+        'inspect_github_repo', 'list_github_directory', 'find_github_files', 'read_github_file',
+        'get_github_commit', 'compare_github_revisions', 'get_github_file_history']
 
 
 def test_large_public_readme_uses_bounded_raw_media(monkeypatch):

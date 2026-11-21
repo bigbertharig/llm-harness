@@ -206,6 +206,22 @@
         {
           "name": "get_workspace_git_diff",
           "approval": "automatic"
+        },
+        {
+          "name": "get_workspace_git_commit",
+          "approval": "automatic"
+        },
+        {
+          "name": "compare_workspace_git_revisions",
+          "approval": "automatic"
+        },
+        {
+          "name": "read_workspace_file_at_revision",
+          "approval": "automatic"
+        },
+        {
+          "name": "get_workspace_file_history",
+          "approval": "automatic"
         }
       ]
     },
@@ -229,6 +245,18 @@
         },
         {
           "name": "read_github_file",
+          "approval": "automatic"
+        },
+        {
+          "name": "get_github_commit",
+          "approval": "automatic"
+        },
+        {
+          "name": "compare_github_revisions",
+          "approval": "automatic"
+        },
+        {
+          "name": "get_github_file_history",
           "approval": "automatic"
         }
       ]
