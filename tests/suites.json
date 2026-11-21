@@ -1,14 +1,14 @@
 {
   "agent_runtime": {
-    "purpose": "Project-owned agent loop, child policy, delegated turns, text tools, and Codex response compatibility",
+    "purpose": "Project-owned agent loop, child policy, delegated turns, MCP guards, and Codex response compatibility",
     "tests": [
       "tests/test_project_agent.py",
       "tests/test_gateway_subagent.py",
       "tests/test_child_policy.py",
-      "tests/test_text_tool_bridge.py",
       "tests/test_mcp_call_guard.py",
       "tests/test_tool_helper_policy.py",
-      "tests/test_codex_responses_compat.py"
+      "tests/test_codex_responses_compat.py",
+      "tests/test_product_ownership.py"
     ]
   },
   "local_tools": {
@@ -18,7 +18,6 @@
       "tests/test_workspace_git_mcp.py",
       "tests/test_rig_info_mcp.py",
       "tests/test_host_control_config.py",
-      "tests/test_audit_short_control.py",
       "tests/test_gateway_reset_mcp.py"
     ]
   },

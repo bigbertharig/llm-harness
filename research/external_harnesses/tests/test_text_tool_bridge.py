@@ -6,12 +6,11 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import threading
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
+ARCHIVE = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
+sys.path[:0] = [str(ARCHIVE), str(ROOT / 'tools')]
 from candidate_controllers.text_tool_bridge import call_http, call_stdio, parse_request
 from candidate_controllers.pi import help_spec_for
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 class TextToolBridgeTest(unittest.TestCase):

@@ -4,18 +4,18 @@ Date: 2026-11-04. The manager offers two agent types for now: `coding` and `rese
 
 ## Frozen first case
 
-`tools/comparison_subagents.py` runs one `coding` case for each candidate through its existing isolated MCP controller. A direct MCP baseline creates a child before each native parent run. The parent does not see the arithmetic question until the tool returns the child's answer, so the final answer must be checked against both the child receipt and the question revealed in the tool result. Pass requires one `delegate_task` call with a nonempty task, one child receipt, answer `42` from child and parent, disjoint parent/child GPUs, unchanged ready roster, clean process finishes, and no tool error. Child output is capped at 96 tokens and its runtime at 90 seconds.
+`research/external_harnesses/comparison_subagents.py` runs one `coding` case for each candidate through its existing isolated MCP controller. A direct MCP baseline creates a child before each native parent run. The parent does not see the arithmetic question until the tool returns the child's answer, so the final answer must be checked against both the child receipt and the question revealed in the tool result. Pass requires one `delegate_task` call with a nonempty task, one child receipt, answer `42` from child and parent, disjoint parent/child GPUs, unchanged ready roster, clean process finishes, and no tool error. Child output is capped at 96 tokens and its runtime at 90 seconds.
 
 Run with a prepared parent route (`coder-30b`/32K for five harnesses, `chat-27b`/65K for Hermes):
 
 ```bash
-python3 tools/comparison_subagents.py pi --run-id NEW_ID
-python3 tools/comparison_subagents.py deepseek --run-id NEW_ID
-python3 tools/comparison_subagents.py nanobot --run-id NEW_ID
-python3 tools/comparison_subagents.py opencode --run-id NEW_ID
-python3 tools/comparison_subagents.py codex --run-id NEW_ID
-python3 tools/comparison_subagents.py hermes --run-id NEW_ID
-python3 tools/comparison_subagents.py summary --run-id NEW_ID
+python3 research/external_harnesses/comparison_subagents.py pi --run-id NEW_ID
+python3 research/external_harnesses/comparison_subagents.py deepseek --run-id NEW_ID
+python3 research/external_harnesses/comparison_subagents.py nanobot --run-id NEW_ID
+python3 research/external_harnesses/comparison_subagents.py opencode --run-id NEW_ID
+python3 research/external_harnesses/comparison_subagents.py codex --run-id NEW_ID
+python3 research/external_harnesses/comparison_subagents.py hermes --run-id NEW_ID
+python3 research/external_harnesses/comparison_subagents.py summary --run-id NEW_ID
 ```
 
 Use a fresh ID for each attempt. The 2026-11-04 matrix is `results/subagent_six_native_v2/subagents/matrix.json`, pinned to fixture SHA-256 `eb7d04d2b844265849cf8b6e752edffb5d3b577fef7a7499fc17e37611ab4bd5`.
@@ -86,7 +86,7 @@ The local-only six-harness RAG comparison and 7B/14B/30B/74B Pi size slice were 
 
 ## Pi controller tool bridge and small-model swaps, 2026-11-05
 
-The frozen delegation fixture and pass criteria stayed unchanged (SHA-256 `00a5eda3be222f4cf6bc6096dad52ba18d592ad55c90c54c47ac3d76b53e7a2c`). `tools/candidate_controllers/text_tool_bridge.py` now gives Pi a controller-level fallback when a parent emits a complete MCP request as text rather than a native tool call. It accepts only a whole JSON object with `name` and `arguments`, optionally inside a complete JSON fence or `<tools>` wrapper. The name must be in the controller's exposed allowlist. Before execution the bridge calls `tools/list` and checks the arguments against the advertised JSON Schema. It supports stdio and Streamable HTTP MCP. It never extracts a command from prose. A no-call response gets one generic format-repair turn; bridged requests are limited to two distinct calls and share a 360-second parent deadline. The result is returned to the same Pi session, with a general reminder to follow the user's requested answer format. Receipts distinguish `native`, `text_bridge`, and `none` modes.
+The frozen delegation fixture and pass criteria stayed unchanged (SHA-256 `00a5eda3be222f4cf6bc6096dad52ba18d592ad55c90c54c47ac3d76b53e7a2c`). `research/external_harnesses/candidate_controllers/text_tool_bridge.py` now gives Pi a controller-level fallback when a parent emits a complete MCP request as text rather than a native tool call. It accepts only a whole JSON object with `name` and `arguments`, optionally inside a complete JSON fence or `<tools>` wrapper. The name must be in the controller's exposed allowlist. Before execution the bridge calls `tools/list` and checks the arguments against the advertised JSON Schema. It supports stdio and Streamable HTTP MCP. It never extracts a command from prose. A no-call response gets one generic format-repair turn; bridged requests are limited to two distinct calls and share a 360-second parent deadline. The result is returned to the same Pi session, with a general reminder to follow the user's requested answer format. Receipts distinguish `native`, `text_bridge`, and `none` modes.
 
 The controller also accepts an optional server `help` descriptor with an explicit `name` and `arguments`. It calls that advertised help tool before the parent turn and adds the returned guidance to the system prompt. For the known local Research and Geometry servers, the Pi controller supplies `get_tool_help` with the exact target `tool_name`, as documented by those servers. For all other servers, the advertised descriptions and schemas are the authoritative call instructions; the bridge does not guess help-tool arguments. This is a server adapter, not a model-specific prompt or a test-case answer.
 

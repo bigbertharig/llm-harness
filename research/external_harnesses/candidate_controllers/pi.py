@@ -10,7 +10,7 @@ import time
 import comparison_short_control as common
 from candidate_controllers.text_tool_bridge import parse_request, call_tool
 FIXTURE = common.ROOT / "tools/fixtures/diagnostics_mcp.mjs"
-CONFIGS = common.ROOT / "tools/comparison_fixtures"
+CONFIGS = common.ROOT / "research/external_harnesses/comparison_fixtures"
 SYSTEM = ("Use only the named local fixture MCP tool. Do not use shell, file, web, "
           "or editing tools. Return only the exact marker from the tool result.")
 LOCAL_HELP_SERVERS = {'research_local', 'geometry_local'}

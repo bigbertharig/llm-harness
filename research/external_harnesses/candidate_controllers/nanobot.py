@@ -9,7 +9,7 @@ import comparison_short_control as common
 def run_nanobot(out, prompt, server, target, system):
     targets = list(target) if isinstance(target, (list, tuple)) else [target]
     if 'command' in server:
-        server = {**server, 'command': [sys.executable, str(common.ROOT / 'tools/candidate_controllers/mcp_content_proxy.py'),
+        server = {**server, 'command': [sys.executable, str(common.ROOT / 'research/external_harnesses/candidate_controllers/mcp_content_proxy.py'),
                                        '--', *server['command']]}
     config = {
         'providers': {'rig': {'apiKey': 'ready-only-local', 'apiBase': 'http://127.0.0.1:8080/v1',

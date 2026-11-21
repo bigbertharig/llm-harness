@@ -13,7 +13,7 @@ Updated 2026-11-04. This is a coverage register, not a combined rank. The six ca
 | Asynchronous jobs and wake-up | No shared suite | Design in [async completion contract](async_tool_completion_contract_2026-10-27.md) | Test one delayed completion with durable receipt and no model polling |
 | Denial, restart, and failure recovery | Candidate-specific probes only | Some Codex/OpenCode/Hermes resume evidence | Freeze permission-denial, nonzero tool exit, interrupted-session resume, and cold-route rejection cases |
 
-The shared runner boundary is in [candidate controllers](../../tools/candidate_controllers/README.md). Controllers own only native setup and event translation; the shared runners own tasks, direct baselines, score rules, and receipts. Pinned upstream harness source checkouts were unchanged by this pass. A new harness version should get a new run ID and controller compatibility check, leaving the old receipt intact.
+The shared runner boundary is in [candidate controllers](../../research/external_harnesses/candidate_controllers/README.md). Controllers own only native setup and event translation; the shared runners own tasks, direct baselines, score rules, and receipts. Pinned upstream harness source checkouts were unchanged by this pass. A new harness version should get a new run ID and controller compatibility check, leaving the old receipt intact.
 
 ## Codex compatibility follow-up, 2026-11-02
 
@@ -37,7 +37,7 @@ The remaining native harness failures are bounded: Codex skipped one call but pa
 
 ## Two-tool research chain and provider load, 2026-11-04
 
-`tools/comparison_web_research.py` runs one frozen, page-only answer case through `tools/fixtures/web_research_mcp.py`. Search returns two URLs with snippets that omit the cadence fact; `fetch_page` invokes the existing `llm_orchestration` CPU scraper on the first URL. The candidate must call search once, fetch that exact URL once, return the cadence from page text, and cite the fetched URL in JSON. Each candidate has a direct MCP and real-scraper baseline before inference; all six baselines passed. The independent CPU scraper control passed 6/6 at `results/web_research_cpu_control_2026-11-04.json`; the final direct MCP control is `results/web_research_final_contract_2026-11-04/research/pi/summary.json`.
+`research/external_harnesses/comparison_web_research.py` runs one frozen, page-only answer case through `tools/fixtures/web_research_mcp.py`. Search returns two URLs with snippets that omit the cadence fact; `fetch_page` invokes the existing `llm_orchestration` CPU scraper on the first URL. The candidate must call search once, fetch that exact URL once, return the cadence from page text, and cite the fetched URL in JSON. Each candidate has a direct MCP and real-scraper baseline before inference; all six baselines passed. The independent CPU scraper control passed 6/6 at `results/web_research_cpu_control_2026-11-04.json`; the final direct MCP control is `results/web_research_final_contract_2026-11-04/research/pi/summary.json`.
 
 | Harness | Native chain | Receipt |
 |---|---|---|
@@ -70,7 +70,7 @@ With parent `chat-27b` on GPU 0, a `coding` request cold-loaded `coder-7b` on GP
 
 ### Matched six-harness delegation round, 2026-11-04
 
-`tools/comparison_subagents.py` now runs one frozen `coding` case through the existing six isolated MCP controllers. The parent sees only the task and `agent_type=coding`; the fixture injects a private arithmetic question into the child task, then reveals that question with the child's answer for the parent to verify. The child runs in a separate Pi process with no delegation tool, a 96-token output cap, and a 90-second child timeout. The gateway manager resolves or loads a disjoint ready route and has a five-minute preparation deadline. The runner gates each native run on a direct MCP/child baseline and records native calls, child receipts, parent answer, route stability, and GPU separation. The frozen fixture hash is `eb7d04d2b844265849cf8b6e752edffb5d3b577fef7a7499fc17e37611ab4bd5`.
+`research/external_harnesses/comparison_subagents.py` now runs one frozen `coding` case through the existing six isolated MCP controllers. The parent sees only the task and `agent_type=coding`; the fixture injects a private arithmetic question into the child task, then reveals that question with the child's answer for the parent to verify. The child runs in a separate Pi process with no delegation tool, a 96-token output cap, and a 90-second child timeout. The gateway manager resolves or loads a disjoint ready route and has a five-minute preparation deadline. The runner gates each native run on a direct MCP/child baseline and records native calls, child receipts, parent answer, route stability, and GPU separation. The frozen fixture hash is `eb7d04d2b844265849cf8b6e752edffb5d3b577fef7a7499fc17e37611ab4bd5`.
 
 | Harness | Parent route | Native pass | Duration |
 |---|---|---:|---:|

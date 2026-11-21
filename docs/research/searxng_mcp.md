@@ -13,7 +13,7 @@ The server makes one HTTP request per call with a 15 second timeout and a 2 MB r
 
 ## Harness comparison lane
 
-`tools/comparison_web_search.py` accepts `--backend searxng`. For example, with `SEARXNG_URL` set, run `python3 tools/comparison_web_search.py pi --run-id my-searxng-trial --backend searxng --case python_taskgroup`. The default remains `ddg`. SearXNG case artifacts go under `results/<run-id>/searxng/<candidate>/<case>/`; DDG keeps its existing `results/<run-id>/<candidate>/<case>/` layout. Both fixture and summary label the backend.
+`research/external_harnesses/comparison_web_search.py` accepts `--backend searxng`. For example, with `SEARXNG_URL` set, run `python3 research/external_harnesses/comparison_web_search.py pi --run-id my-searxng-trial --backend searxng --case python_taskgroup`. The default remains `ddg`. SearXNG case artifacts go under `results/<run-id>/searxng/<candidate>/<case>/`; DDG keeps its existing `results/<run-id>/<candidate>/<case>/` layout. Both fixture and summary label the backend.
 
 The runner first calls the selected MCP server directly. It launches the candidate only when that baseline returns at least five distinct URLs, an expected official domain in the top five, and no rate limit signal. The candidate receives the same server command and `search_web` tool. A failed baseline leaves a per-case receipt with the failed gate and does not call the candidate. The SearXNG lane requires `SEARXNG_URL` in the runner environment; a missing value stops at argument validation.
 

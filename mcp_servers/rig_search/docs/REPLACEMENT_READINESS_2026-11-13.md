@@ -62,7 +62,7 @@ lanes remain available as controls. Example:
 
 ```sh
 cd /home/bryan/llm-harness
-python3 tools/comparison_web_search.py pi --run-id rig-search-smoke --backend rig_search --case python_taskgroup
+python3 research/external_harnesses/comparison_web_search.py pi --run-id rig-search-smoke --backend rig_search --case python_taskgroup
 ```
 
 The runner still applies its direct MCP relevance gate before launching a

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Checkpointed model-first rerun of controller paths changed after core matrix v1."""
+"""Checkpointed model-first OpenCode rerun after alias guidance change."""
 
 import argparse
 from collections import Counter
@@ -13,23 +13,13 @@ from model_harness_matrix import ROOT, RIGCTL, MODELS, LOCAL_MCP, command_for, i
 
 MODEL_ORDER = ('20b', 'single_1060', 'dual_1060', '27b', '30b', '74b')
 CHANGED_FILES = (
-    'tools/candidate_controllers/mcp_content_proxy.py',
-    'tools/candidate_controllers/deepseek.py',
-    'tools/candidate_controllers/nanobot.py',
-    'tools/candidate_controllers/opencode.py',
-    'tools/candidate_controllers/hermes.py',
-    'tools/candidate_controllers/codex.py',
+    'research/external_harnesses/candidate_controllers/opencode.py',
 )
 
 
 def selected(context):
-    rows = []
-    for candidate in ('deepseek', 'nanobot'):
-        rows.extend((candidate, 'mcp_local', case) for case in ('marker_structured', 'lookup_nested'))
-    rows.extend(('opencode', 'mcp_local', case) for case in LOCAL_MCP)
+    rows = [('opencode', 'mcp_local', case) for case in LOCAL_MCP]
     rows.extend((('opencode', 'subagent', None), ('opencode', 'web_research', None)))
-    if context >= 64000:
-        rows.append(('hermes', 'short', None))
     return rows
 
 

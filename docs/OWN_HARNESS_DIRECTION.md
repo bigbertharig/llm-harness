@@ -17,9 +17,11 @@ batch to four calls and each run to six model turns, rejects duplicate execution
 forces a final tool-free synthesis turn when a model replays a completed call,
 and records a model-neutral receipt. This is the production development path.
 
-Candidate controllers remain in `tools/candidate_controllers/` for matched
-evaluation and feature research. A useful candidate behavior enters the active
-engine only through an explicit shared contract and deterministic tests.
+Candidate controllers and their historical runners remain together in
+`research/external_harnesses/` for reference. That directory is optional: the
+runtime, public tool catalog, default tests, and project-owned trials must still
+work if it is deleted. A useful candidate behavior enters the active engine only
+through an explicit shared contract and deterministic tests.
 
 ## How a feature enters the Harness
 

@@ -79,7 +79,7 @@ def main():
                     env = os.environ.copy()
                     env.update(HARNESS_TEST_ROUTE='gpu-rig/' + profile,
                                HARNESS_TEST_MODEL=model, HARNESS_TEST_CONTEXT=str(context))
-                    result = command(['python3', 'tools/comparison_subagents.py', 'pi',
+                    result = command(['python3', 'research/external_harnesses/comparison_subagents.py', 'pi',
                                       '--run-id', run_id], HARNESS, 450,
                                      ROOT / f'{size}_trial_{trial:02d}.log', env)
                     result['run_id'] = run_id

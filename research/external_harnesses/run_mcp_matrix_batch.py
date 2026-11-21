@@ -29,7 +29,7 @@ def main():
     rows = []
     for case in args.cases:
         started = time.time()
-        cmd = [sys.executable, str(matrix.ROOT / 'tools/comparison_mcp_matrix.py'),
+        cmd = [sys.executable, str(matrix.ROOT / 'research/external_harnesses/comparison_mcp_matrix.py'),
                args.candidate, case, '--run-id', args.run_id]
         proc = subprocess.run(cmd, text=True, capture_output=True)
         # The child creates the case directory; retain a batch-level terminal receipt too.

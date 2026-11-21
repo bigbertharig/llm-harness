@@ -62,16 +62,16 @@ def invoke(command, cwd, timeout, log, env=None):
 
 def command_for(lane, case, candidate, run_id):
     if lane == 'short':
-        return ['python3', 'tools/comparison_short_control.py', candidate,
+        return ['python3', 'research/external_harnesses/comparison_short_control.py', candidate,
                 '--run-id', run_id], 420
     if lane == 'mcp_local':
-        return ['python3', 'tools/comparison_mcp_matrix.py', candidate, case,
+        return ['python3', 'research/external_harnesses/comparison_mcp_matrix.py', candidate, case,
                 '--run-id', run_id], 180
     if lane == 'subagent':
-        return ['python3', 'tools/comparison_subagents.py', candidate,
+        return ['python3', 'research/external_harnesses/comparison_subagents.py', candidate,
                 '--run-id', run_id], 480
     if lane == 'web_research':
-        return ['python3', 'tools/comparison_web_research.py', candidate,
+        return ['python3', 'research/external_harnesses/comparison_web_research.py', candidate,
                 '--run-id', run_id], 300
     raise ValueError(lane)
 

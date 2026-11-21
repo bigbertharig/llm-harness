@@ -31,7 +31,7 @@ NODE = HOME / '.local/opt/node-v24.14.0-linux-arm64/bin/node'
 PI_CLI = HOME / 'harness-runtimes/pi-1.4.0/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js'
 OPENCODE = HOME / 'harness-runtimes/opencode-2.1.4/platform/package/bin/opencode'
 DEEPSEEK_CLI = HOME / 'deepseek-harness/apps/cli/lib/bin.js'
-FIXTURES = ROOT / 'tools/comparison_fixtures'
+FIXTURES = ROOT / 'research/external_harnesses/comparison_fixtures'
 SYSTEM = 'You are a concise chat assistant. Follow the user instructions.'
 PROMPTS = [
     'Remember these project facts: owner Mira; deadline Friday; codeword amber-birch-17; client Vega; artifact atlas.csv; checksum 7c4e; risk orange; release gate QA-42; budget 18 hours. Reply only ACK.',

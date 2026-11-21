@@ -7,8 +7,8 @@ import tempfile
 import unittest
 
 
-ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("audit_short_control", ROOT / "tools/audit_short_control.py")
+ARCHIVE = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("audit_short_control", ARCHIVE / "audit_short_control.py")
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
