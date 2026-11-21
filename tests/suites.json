@@ -1,11 +1,68 @@
 {
+  "agent_runtime": {
+    "purpose": "Project-owned agent loop, child policy, delegated turns, text tools, and Codex response compatibility",
+    "tests": [
+      "tests/test_project_agent.py",
+      "tests/test_gateway_subagent.py",
+      "tests/test_child_policy.py",
+      "tests/test_text_tool_bridge.py",
+      "tests/test_mcp_call_guard.py",
+      "tests/test_tool_helper_policy.py",
+      "tests/test_codex_responses_compat.py"
+    ]
+  },
+  "local_tools": {
+    "purpose": "Bounded workspace, Git, rig information, host control, audit, and Gateway reset tools",
+    "tests": [
+      "tests/test_workspace_read_mcp.py",
+      "tests/test_workspace_git_mcp.py",
+      "tests/test_rig_info_mcp.py",
+      "tests/test_host_control_config.py",
+      "tests/test_audit_short_control.py",
+      "tests/test_gateway_reset_mcp.py"
+    ]
+  },
+  "github_public": {
+    "purpose": "Pinned, public-only GitHub discovery and historical repository reads",
+    "tests": [
+      "tests/test_github_public_mcp.py",
+      "tests/test_tool_registry.py",
+      "tests/test_dashboard_tool_catalog.py"
+    ]
+  },
+  "catalog_routing": {
+    "purpose": "Tool registry exports, model synchronization, ready-roster routing, and live preflight contracts",
+    "tests": [
+      "tests/test_tool_registry.py",
+      "tests/test_dashboard_tool_catalog.py",
+      "tests/test_model_sync.py",
+      "tests/test_ready_roster.py",
+      "tests/test_live_preflight.py",
+      "tests/test_suite_catalog.py"
+    ]
+  },
+  "rig_search": {
+    "purpose": "Search provider routing, DuckDuckGo normalization, safe page fetch, and MCP result contracts",
+    "tests": [
+      "mcp_servers/rig_search/tests/test_duckduckgo.py",
+      "mcp_servers/rig_search/tests/test_page_fetch.py",
+      "mcp_servers/rig_search/tests/test_provider_routing.py",
+      "mcp_servers/rig_search/tests/test_search_contract.py"
+    ]
+  },
   "google_workspace": {
-    "purpose": "Model-neutral Google MCP schemas, child permission/profile behavior, text bridge compatibility, and exported catalog contracts",
+    "purpose": "Google MCP schemas, child permissions, text bridge compatibility, and exported catalog contracts",
     "tests": [
       "tests/test_google_workspace_mcp.py",
       "tests/test_gateway_subagent.py",
       "tests/test_child_policy.py",
       "tests/test_tool_registry.py"
+    ]
+  },
+  "test_infrastructure": {
+    "purpose": "Named-suite manifest coverage and runner contracts",
+    "tests": [
+      "tests/test_test_suites.py"
     ]
   }
 }

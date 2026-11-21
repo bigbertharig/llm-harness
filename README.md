@@ -34,9 +34,12 @@ Use this repository's environment rather than another project's interpreter:
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pytest -q
+.venv/bin/python tools/run_test_suite.py --list
+.venv/bin/python tools/run_test_suite.py agent_runtime local_tools
 ```
 
 The default test configuration excludes ignored receipts and archived candidate results, and includes the current `rig_search` package contracts.
+Named suites in `tests/suites.json` provide smaller change-scoped runs; the full command remains the release check.
 
 ## Current deployment
 
