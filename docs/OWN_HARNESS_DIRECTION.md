@@ -6,6 +6,21 @@ and Hermes Agent) are reference implementations and comparison lanes. Passing a
 trial does not make one of them the dashboard's engine. The [coverage register](research/harness_suite_coverage_2026-11-02.md) records what each has actually
 demonstrated.
 
+## Active project engine
+
+`tools/project_agent.py` is the first project-owned bounded agent loop. Delegated
+local children now call prepared Gateway routes through this loop rather than
+launching an external candidate harness. Gateway admission and Orchestration
+placement remain outside the loop. The loop verifies ready route identity,
+advertises only reviewed MCP schemas, validates every call, limits each proposed
+batch to four calls and each run to six model turns, rejects duplicate execution,
+forces a final tool-free synthesis turn when a model replays a completed call,
+and records a model-neutral receipt. This is the production development path.
+
+Candidate controllers remain in `tools/candidate_controllers/` for matched
+evaluation and feature research. A useful candidate behavior enters the active
+engine only through an explicit shared contract and deterministic tests.
+
 ## How a feature enters the Harness
 
 1. Name the behavior and its failure cases. Use the candidate trials to find

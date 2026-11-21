@@ -1,5 +1,4 @@
 import json
-import io
 import sys
 from pathlib import Path
 import subprocess
@@ -16,11 +15,6 @@ from subagent_contract import canonical_integer_answer, canonical_final_line, ch
 
 
 class GatewaySubagentRequest(unittest.TestCase):
-    def test_only_google_profile_enables_mcp_extension_loading(self):
-        self.assertEqual(gateway_subagent._extension_flags('google_workspace'), [])
-        self.assertEqual(gateway_subagent._extension_flags('workspace_read'), ['--no-extensions'])
-        self.assertEqual(gateway_subagent._extension_flags('none'), ['--no-extensions'])
-
     def test_repetitive_shared_output_is_rejected(self):
         self.assertTrue(malformed_child_output('<cwd>\n/tmp/work\n</cwd>\n' + '</cwd>\n' * 20))
         self.assertFalse(malformed_child_output('Inspected routes.py and found one fixed-context route.'))
@@ -52,6 +46,19 @@ class GatewaySubagentRequest(unittest.TestCase):
             'search_workspace_text({"query":"ok"})\ndelete_file({"path":"README.md"})',
             server, server['tools']))
 
+    def test_tool_bridge_accepts_bounded_json_sequence_from_local_models(self):
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_file']}
+        calls = ('{"name":"mcp__workspace_read__read_workspace_file",'
+                 '"arguments":{"path":"README.md"}}\n\n'
+                 '{"name":"mcp__workspace_read__read_workspace_file",'
+                 '"arguments":{"path":"docs/OWN_HARNESS_DIRECTION.md"}}')
+        self.assertEqual(parse_public_requests(calls, server, server['tools']), [
+            ('read_workspace_file', {'path': 'README.md'}),
+            ('read_workspace_file', {'path': 'docs/OWN_HARNESS_DIRECTION.md'})])
+        self.assertEqual(len(parse_public_requests('\n'.join([calls] * 4),
+                                                   server, server['tools'])), 4)
+        self.assertEqual(parse_public_requests(calls + '\nnot prose', server, server['tools']), [])
+
     def test_tool_bridge_accepts_one_strict_allowlisted_xml_call(self):
         server = {'name': 'workspace_read', 'tools': ['search_workspace_text', 'read_workspace_file']}
         calls = ('<read_workspace_file>\n<path>ARCHITECTURE.md</path>\n'
@@ -63,6 +70,9 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertEqual(parse_public_requests(calls, server, server['tools']), [
             ('read_workspace_file', {'path': 'ARCHITECTURE.md', 'start_line': 1, 'max_lines': 200}),
             ('search_workspace_text', {'query': 'proposed'})])
+        repeated = ''.join('<read_workspace_file><path>README.md</path></read_workspace_file>'
+                           for _ in range(8))
+        self.assertEqual(len(parse_public_requests(repeated, server, server['tools'])), 4)
         self.assertIsNone(parse_public_request(
             '<delete_file><path>README.md</path></delete_file>', server, server['tools']))
         self.assertIsNone(parse_public_request(
@@ -244,26 +254,18 @@ class GatewaySubagentRequest(unittest.TestCase):
                  'service_instance_id': 'worker-load-1', 'reservation': reservation,
                  'admission': {'mode': 'shared_model', 'reservation': reservation}}
         ready = {'id': child['route'], 'gpu_ids': [2], 'model': child['model']}
-        class Process:
-            returncode = 0
-            stdin = io.StringIO()
-            stdout = io.StringIO(''.join(json.dumps(row) + '\n' for row in [
-                {'type': 'message_end', 'message': {'role': 'assistant',
-                 'content': [{'type': 'text', 'text': 'Review complete'}]}},
-                {'type': 'agent_settled'},
-            ]))
-            def poll(self):
-                return 0
+        project = {'engine': 'big-bertha-project-agent', 'engine_version': 1,
+                   'answer': 'Review complete', 'error': None, 'duration_s': 0.1,
+                   'tool_calls': 0, 'tool_call_summary': [],
+                   'tool_budget': {'calls': 0}, 'tool_batch_limit': 4,
+                   'model_steps': 1, 'max_model_steps': 6,
+                   'tool_format_repair_attempted': False}
 
         with tempfile.TemporaryDirectory() as temp, \
              patch('gateway_subagent.fetch_ready_roster', side_effect=[
                  {'data': []}, {'data': [ready]}, {'data': [ready]}]), \
              patch('gateway_subagent.resolve_child', return_value=child), \
-             patch('gateway_subagent.BASE_MODEL', Path(__file__).resolve().parents[1] /
-                   'tools/comparison_fixtures/pi_models.json'), \
-             patch('gateway_subagent.BASE_SETTINGS', Path(__file__).resolve().parents[1] /
-                   'tools/comparison_fixtures/pi_settings.json'), \
-             patch('gateway_subagent.subprocess.Popen', return_value=Process()):
+             patch('gateway_subagent.run_project_agent', return_value=project):
             receipt = run_child(parent_id='cloud/codex', agent_type='coding',
                                 prompt='Review this design', out=Path(temp) / 'child',
                                 gateway='http://127.0.0.1:8080')
@@ -278,21 +280,13 @@ class GatewaySubagentRequest(unittest.TestCase):
         child = {'route': 'gpu-rig/child', 'gpu_ids': [2],
                  'model': 'test-model', 'context_length': 8192}
         ready = {'id': child['route'], 'gpu_ids': [2], 'model': child['model']}
-        request = json.dumps({'name': 'mcp__rig_search__search_web',
-                              'arguments': {'query': 'official Python documentation'}})
-        class Process:
-            returncode = 0
-            stdin = io.StringIO()
-            stdout = io.StringIO(''.join(json.dumps(row) + '\n' for row in [
-                {'type': 'message_end', 'message': {'role': 'assistant',
-                 'content': [{'type': 'text', 'text': request}]}},
-                {'type': 'agent_settled'},
-                {'type': 'message_end', 'message': {'role': 'assistant',
-                 'content': [{'type': 'text', 'text': 'Found an official source.'}]}},
-                {'type': 'agent_settled'},
-            ]))
-            def poll(self):
-                return 0
+        project = {'engine': 'big-bertha-project-agent', 'engine_version': 1,
+                   'answer': 'Found an official source.', 'error': None, 'duration_s': 0.2,
+                   'tool_calls': 1,
+                   'tool_call_summary': [{'tool': 'search_web', 'is_error': False}],
+                   'tool_budget': {'calls': 1}, 'tool_batch_limit': 4,
+                   'model_steps': 2, 'max_model_steps': 6,
+                   'tool_format_repair_attempted': False}
         def configure(agent, out, profile, workspace_root):
             (agent / 'mcp.json').write_text(json.dumps({'mcpServers': {'rig_search': {
                 'command': sys.executable, 'args': ['search_server.py'],
@@ -303,17 +297,19 @@ class GatewaySubagentRequest(unittest.TestCase):
                  {'data': []}, {'data': [ready]}, {'data': [ready]}]), \
              patch('gateway_subagent.resolve_child', return_value=child), \
              patch('gateway_subagent._child_tools', side_effect=configure), \
-             patch('gateway_subagent.call_tool', return_value={'isError': False,
-                   'structuredContent': {'results': [{'url': 'https://docs.python.org'}]}}) as call, \
-             patch('gateway_subagent.subprocess.Popen', return_value=Process()):
+             patch('gateway_subagent.discover_tools', return_value=[
+                 {'name': 'search_web', 'inputSchema': {'type': 'object'}},
+                 {'name': 'fetch_page', 'inputSchema': {'type': 'object'}}]), \
+             patch('gateway_subagent.run_project_agent', return_value=project) as run:
             receipt = run_child(parent_id='cloud/codex', agent_type='research',
                                 prompt='Find the docs', out=Path(temp) / 'child',
                                 gateway='http://127.0.0.1:8080', tool_profile='public_research')
-        self.assertEqual(receipt['tool_mode'], 'text_bridge')
+        self.assertEqual(receipt['tool_mode'], 'project_agent')
         self.assertEqual(receipt['tool_calls'], 1)
         self.assertEqual(receipt['answer'], 'Found an official source.')
         self.assertIsNone(receipt['error'])
-        self.assertEqual(call.call_args.args[0]['tools'], ['search_web', 'fetch_page'])
+        self.assertEqual(run.call_args.kwargs['tool_server']['tools'], ['search_web', 'fetch_page'])
+        self.assertEqual(len(run.call_args.kwargs['tool_server']['definitions']), 2)
 
     def test_ephemeral_child_is_released_when_post_attach_roster_fails(self):
         parent = {'id': 'gpu-rig/shared-35b-main', 'model': 'qwen3.6:35b-a3b-xl',

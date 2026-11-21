@@ -11,36 +11,22 @@ import argparse
 import json
 import os
 from pathlib import Path
-import queue
 import re
-import subprocess
 import sys
-import threading
-import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from ready_roster import fetch_ready_roster
-from subagent_contract import child_system_prompt
 from codex_child import run_codex_child
-from child_public_tools import parse_requests, call_tool
-from child_policy import ToolBudget, guard_child_run, validate_request
+from child_public_tools import discover_tools
+from child_policy import guard_child_run
+from project_agent import run_agent as run_project_agent
 
-HOME = Path('/home/bryan')
 ROOT = Path(__file__).resolve().parents[1]
-NODE = HOME / '.local/opt/node-v24.14.0-linux-arm64/bin/node'
-PI_CLI = HOME / 'harness-runtimes/pi-1.4.0/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js'
-BASE_MODEL = ROOT / 'tools/comparison_fixtures/pi_models.json'
-BASE_SETTINGS = ROOT / 'tools/comparison_fixtures/pi_settings.json'
 TOOL_REGISTRY = ROOT / 'tools/tool_registry.json'
 SEARCH_SERVER = ROOT / 'mcp_servers/rig_search/mcp_server.py'
 WORKSPACE_SERVER = ROOT / 'tools/workspace_read_mcp.py'
 GOOGLE_SERVER = ROOT / 'tools/google_workspace_mcp.py'
-
-
-def _extension_flags(tool_profile: str) -> list[str]:
-    """Enable only the built-in MCP loader for the native Google profile."""
-    return [] if tool_profile == 'google_workspace' else ['--no-extensions']
 
 
 def malformed_child_output(text: str) -> bool:
@@ -200,16 +186,6 @@ def _release_ephemeral(gateway: str, parent_id: str, child: dict) -> dict:
                          reservation_id=reservation.get('reservation_id'))
 
 
-def _models_config(route: dict, gateway: str, max_tokens: int) -> dict:
-    config = json.loads(BASE_MODEL.read_text())
-    provider = config['providers']['rig']
-    provider['baseUrl'] = gateway.rstrip('/') + '/v1'
-    model = provider['models'][0]
-    model.update(id=route['route'], name='Prepared child ' + route['model'],
-                 contextWindow=route['context_length'], maxTokens=max_tokens)
-    return config
-
-
 @guard_child_run
 def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gateway: str,
               max_tokens: int = 1536, timeout_s: int = 300,
@@ -268,162 +244,25 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
         out.mkdir(parents=True)
         agent = out / 'agent'
         agent.mkdir()
-        (agent / 'models.json').write_text(json.dumps(_models_config(child, gateway, max_tokens), indent=2))
-        (agent / 'settings.json').write_bytes(BASE_SETTINGS.read_bytes())
-        (agent / 'auth.json').write_text('{}')
-        (agent / 'models-store.json').write_text('{}')
-        tool_flags = _child_tools(agent, out, tool_profile, workspace_root)
-        workspace = out / 'workspace'
-        workspace.mkdir()
-        env = os.environ.copy()
-        env['PI_CODING_AGENT_DIR'] = str(agent)
-        extension_flags = _extension_flags(tool_profile)
-        command = [str(NODE), str(PI_CLI), '--mode', 'rpc', '--offline',
-                   *tool_flags, *extension_flags, '--no-skills', '--no-prompt-templates',
-                   '--no-context-files', '--session-dir', str(out / 'sessions'),
-                   '--system-prompt', child_system_prompt(agent_type, tool_profile),
-                   '--provider', 'rig', '--model', child['route']]
-        started = time.monotonic()
-        answer, error = '', None
-        native_tool_calls = 0
-        bridge_calls = []
-        budget = ToolBudget()
-        attempted = set()
-        repair_attempted = False
+        _child_tools(agent, out, tool_profile, workspace_root)
         tool_bridge = None
         if tool_profile != 'none':
             server_name, server_config = next(iter(json.loads((agent / 'mcp.json').read_text())['mcpServers'].items()))
             tool_bridge = {'name': server_name,
                            'command': [server_config['command'], *server_config['args']],
                            'tools': list(server_config['toolExposure'])}
-        with (out / 'events.jsonl').open('w') as events, (out / 'stderr.log').open('w') as stderr:
-            proc = subprocess.Popen(command, cwd=workspace, env=env, stdin=subprocess.PIPE,
-                                    stdout=subprocess.PIPE, stderr=stderr, text=True, bufsize=1)
-            received = queue.Queue()
-            def reader():
-                for line in proc.stdout:
-                    events.write(line)
-                    events.flush()
-                    try:
-                        received.put(json.loads(line))
-                    except ValueError:
-                        pass
-                received.put({'type': '_eof'})
-            threading.Thread(target=reader, daemon=True).start()
-            try:
-                proc.stdin.write(json.dumps({'id': 'child-task', 'type': 'prompt', 'message': prompt}) + '\n')
-                proc.stdin.flush()
-                deadline = time.monotonic() + timeout_s
-                while time.monotonic() < deadline:
-                    if out.with_suffix('.cancel').exists():
-                        error = 'cancelled'
-                        break
-                    try:
-                        event = received.get(timeout=min(0.5, max(0.01, deadline - time.monotonic())))
-                    except queue.Empty:
-                        continue
-                    if event.get('type') == 'tool_execution_start' and tool_profile != 'none' \
-                            and native_tool_calls >= 5:
-                        error = 'child exceeded its tool-call limit'
-                        break
-                    if event.get('type') == 'tool_execution_end':
-                        native_tool_calls += 1
-                    if event.get('type') == 'message_end' and event.get('message', {}).get('role') == 'assistant':
-                        answer = ''.join(block.get('text', '') for block in event['message'].get('content', [])
-                                         if block.get('type') == 'text')
-                        if event['message'].get('stopReason') == 'error':
-                            error = event['message'].get('errorMessage') or 'model error'
-                    if event.get('type') == 'agent_settled':
-                        if malformed_child_output(answer):
-                            error = 'shared model produced malformed repetitive output'
-                            break
-                        if tool_bridge and native_tool_calls == 0:
-                            requests = parse_requests(answer, tool_bridge, tool_bridge['tools'])
-                            pending = []
-                            pending_fingerprints = set()
-                            for request in requests:
-                                fingerprint = json.dumps(request, sort_keys=True)
-                                if fingerprint not in attempted and fingerprint not in pending_fingerprints:
-                                    pending.append(request)
-                                    pending_fingerprints.add(fingerprint)
-                            if requests and not pending:
-                                error = 'child repeated or exceeded its tool-call limit'
-                                break
-                            if pending:
-                                evidence_batch = []
-                                for name, arguments in pending:
-                                    fingerprint = json.dumps((name, arguments), sort_keys=True)
-                                    attempted.add(fingerprint)
-                                    try:
-                                        budget.before_call()
-                                        validate_request(tool_profile, name, arguments, workspace_root)
-                                        result = call_tool(tool_bridge, name, arguments,
-                                                           timeout=min(45, max(1, deadline - time.monotonic() - 5)))
-                                        budget.record(result)
-                                    except Exception as exc:
-                                        error = f'child tool call failed: {type(exc).__name__}: {exc}'
-                                        break
-                                    bridge_calls.append({'tool': name, 'is_error': bool(result.get('isError'))})
-                                    evidence = result.get('structuredContent') or result.get('content') or result
-                                    evidence_batch.append({'tool': name, 'arguments': arguments, 'result': evidence})
-                                    if result.get('isError'):
-                                        break
-                                if error:
-                                    break
-                                if bridge_calls[-1]['is_error']:
-                                    if budget.calls >= budget.receipt()['max_calls']:
-                                        error = f'child tool returned repeated errors: {bridge_calls[-1]["tool"]}'
-                                        break
-                                    feedback = ('MCP tool rejected one request in the batch:\n' +
-                                                json.dumps(evidence_batch[-1], ensure_ascii=False)[:3000] +
-                                                '\nCorrect only that request and return one JSON tool request. '
-                                                'Do not invent a result.')
-                                else:
-                                    feedback = ('MCP batch results:\n' +
-                                                json.dumps(evidence_batch, ensure_ascii=False)[:24000] +
-                                                '\nAll calls in this validated batch ran. Answer the original task '
-                                                'with the evidence and paths now. Request one additional tool call '
-                                                'only if it is essential; do not repeat completed calls.')
-                                proc.stdin.write(json.dumps({'id': f'tool-feedback-{len(bridge_calls)}',
-                                                             'type': 'prompt', 'message': feedback}) + '\n')
-                                proc.stdin.flush()
-                                continue
-                            if not bridge_calls and not repair_attempted:
-                                repair_attempted = True
-                                allowed = ['mcp__' + tool_bridge['name'] + '__' + name
-                                           for name in tool_bridge['tools']]
-                                correction = ('No allowed MCP tool call ran. If the task needs tool evidence, '
-                                              'return exactly one JSON object with keys name and arguments. '
-                                              'Use an allowed name and valid arguments: ' +
-                                              json.dumps(allowed) + '. '
-                                              'Do not invent a tool result.')
-                                proc.stdin.write(json.dumps({'id': 'tool-format-repair', 'type': 'prompt',
-                                                             'message': correction}) + '\n')
-                                proc.stdin.flush()
-                                continue
-                            if not any(not call['is_error'] for call in bridge_calls):
-                                error = 'child did not execute an allowed tool'
-                        break
-                    if event.get('type') == '_eof':
-                        error = 'child process exited before settling'
-                        break
-                else:
-                    error = 'timeout'
-            finally:
-                if proc.poll() is None:
-                    if error == 'cancelled':
-                        proc.terminate()
-                    else:
-                        proc.stdin.close()
-                    try:
-                        proc.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        proc.terminate()
-                        proc.wait(timeout=5)
-        exit_code = proc.returncode
-        if tool_profile != 'none' and not error and not native_tool_calls \
-                and not any(not call['is_error'] for call in bridge_calls):
-            error = 'child did not execute an allowed tool'
+            tool_bridge['definitions'] = discover_tools(tool_bridge)
+        project = run_project_agent(
+            gateway=gateway, route=child['route'], expected_model=child['model'],
+            prompt=prompt, agent_type=agent_type, tool_profile=tool_profile,
+            tool_server=tool_bridge, workspace_root=workspace_root,
+            max_tokens=max_tokens, timeout_s=timeout_s,
+            cancel_path=out.with_suffix('.cancel'))
+        (out / 'project_agent.json').write_text(json.dumps(project, indent=2) + '\n')
+        answer, error = project['answer'], project['error']
+        if malformed_child_output(answer):
+            error = 'shared model produced malformed repetitive output'
+        exit_code = 0 if answer and not error else 1
         after = fetch_ready_roster(gateway, os.environ.get('LLM_GATEWAY_API_KEY'))
         after_rows = {row['id']: row for row in after['data']}
         stable = ((parent_id == 'cloud/codex' or after_rows.get(parent['id']) == parent) and
@@ -438,13 +277,17 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
                    'tool_profile': tool_profile, 'minimum_context_tokens': min_context,
                    'requested_context_tokens': context_tokens,
                    'requested_worker_strategy': worker_strategy,
-                   'tool_mode': 'native' if native_tool_calls else 'text_bridge' if bridge_calls else 'none',
-                   'tool_calls': native_tool_calls + len(bridge_calls),
-                   'tool_call_summary': bridge_calls,
-                   'tool_budget': budget.receipt(),
-                   'tool_format_repair_attempted': repair_attempted,
+                   'engine': project['engine'], 'engine_version': project['engine_version'],
+                   'tool_mode': 'project_agent' if tool_profile != 'none' else 'none',
+                   'tool_calls': project['tool_calls'],
+                   'tool_call_summary': project['tool_call_summary'],
+                   'tool_budget': project['tool_budget'],
+                   'tool_batch_limit': project['tool_batch_limit'],
+                   'model_steps': project['model_steps'],
+                   'max_model_steps': project['max_model_steps'],
+                   'tool_format_repair_attempted': project['tool_format_repair_attempted'],
                    'max_tokens': max_tokens, 'timeout_s': timeout_s,
-                   'duration_s': round(time.monotonic() - started, 2), 'exit_code': exit_code,
+                   'duration_s': project['duration_s'], 'exit_code': exit_code,
                    'roster_stable': stable, 'answer': answer, 'error': error}
         if child.get('ephemeral'):
             try:

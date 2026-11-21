@@ -8,11 +8,79 @@ import threading
 import time
 
 
-def parse_requests(answer, server, targets):
+def discover_tools(server, timeout=15):
+    """Return advertised definitions for an allowlisted stdio server."""
+    if not isinstance(server, dict) or not isinstance(server.get('tools'), list):
+        raise ValueError('tool server allowlist is invalid')
+    proc = subprocess.Popen(server['command'], stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            text=True, bufsize=1)
+    received = queue.Queue()
+
+    def reader():
+        while line := proc.stdout.readline(131073):
+            if len(line) > 131072 or not line.endswith('\n'):
+                received.put(RuntimeError('public MCP response exceeded its line limit'))
+                break
+            try:
+                received.put(json.loads(line))
+            except ValueError:
+                continue
+        received.put(None)
+
+    threading.Thread(target=reader, daemon=True).start()
+    deadline = time.monotonic() + timeout
+
+    def request(ident, method, params=None):
+        packet = {'jsonrpc': '2.0', 'id': ident, 'method': method}
+        if params is not None:
+            packet['params'] = params
+        proc.stdin.write(json.dumps(packet) + '\n')
+        proc.stdin.flush()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('public MCP discovery timed out')
+            reply = received.get(timeout=remaining)
+            if reply is None:
+                raise RuntimeError('public MCP server exited')
+            if isinstance(reply, Exception):
+                raise reply
+            if reply.get('id') == ident:
+                if 'error' in reply:
+                    raise RuntimeError('public MCP server returned an error')
+                return reply.get('result') or {}
+
+    try:
+        request(1, 'initialize', {'protocolVersion': '2025-06-18', 'capabilities': {},
+                                  'clientInfo': {'name': 'harness-agent', 'version': '1'}})
+        proc.stdin.write(json.dumps({'jsonrpc': '2.0',
+                                     'method': 'notifications/initialized'}) + '\n')
+        proc.stdin.flush()
+        rows = request(2, 'tools/list').get('tools') or []
+        definitions = [row for row in rows if isinstance(row, dict)
+                       and row.get('name') in server['tools']]
+        if {row.get('name') for row in definitions} != set(server['tools']):
+            raise ValueError('allowlisted tool is not advertised by its MCP server')
+        return definitions
+    finally:
+        if proc.poll() is None:
+            proc.stdin.close()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.terminate()
+                proc.wait(timeout=3)
+        proc.stdout.close()
+
+
+def parse_requests(answer, server, targets, max_calls=4):
     """Return a bounded leading XML batch, or one request in another accepted dialect."""
+    if type(max_calls) is not int or max_calls < 1:
+        raise ValueError('max_calls must be a positive integer')
     raw = answer.strip() if isinstance(answer, str) else ''
     calls = []
-    while raw.startswith('<') and len(calls) < 12:
+    while raw.startswith('<') and len(calls) < max_calls:
         match = re.match(r'^<([A-Za-z_][A-Za-z0-9_]*)>\s*(.*?)\s*</\1>', raw, re.S)
         if not match:
             break
@@ -22,6 +90,30 @@ def parse_requests(answer, server, targets):
         calls.append(request)
         raw = raw[match.end():].lstrip()
     if calls:
+        return calls
+    # Some local models emit a whitespace-separated sequence of complete JSON
+    # request objects. Decode the whole response strictly and keep the same
+    # per-turn bound used for XML batches; prose or malformed trailing bytes
+    # invalidate the sequence.
+    decoder = json.JSONDecoder()
+    position = 0
+    while position < len(raw) and len(calls) < max_calls:
+        while position < len(raw) and raw[position].isspace():
+            position += 1
+        if position >= len(raw):
+            break
+        try:
+            packet, end = decoder.raw_decode(raw, position)
+        except ValueError:
+            calls = []
+            break
+        request = parse_request(json.dumps(packet), server, targets)
+        if request is None:
+            calls = []
+            break
+        calls.append(request)
+        position = end
+    if calls and (len(calls) == max_calls or not raw[position:].strip()):
         return calls
     request = parse_request(answer, server, targets)
     return [request] if request else []

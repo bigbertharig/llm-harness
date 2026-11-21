@@ -1,6 +1,6 @@
 # llm-harness
 
-Harness builds and tests the model-use layer around Gateway routes: shared tools, prompts, context, compaction, sessions, delegation, limits, and recovery. Its MCP adapters and test suites run today. Gateway Manager coordinates model choice and some placement; the rig enforces admission and hardware rules. The project-owned Harness is the integration target; its durable agent loop is still under construction.
+Harness builds and tests the model-use layer around Gateway routes: shared tools, prompts, context, compaction, sessions, delegation, limits, and recovery. Its MCP adapters and test suites run today. Gateway Manager coordinates model choice and some placement; the rig enforces admission and hardware rules. The project-owned bounded agent loop now drives delegated local children; durable multi-turn sessions and compaction remain under construction.
 
 ## Project map
 
@@ -26,9 +26,21 @@ Private site configuration supplies host addresses, credentials, model files, an
 - [Future durable sessions](docs/REMOTE_SESSIONS_DESIGN.md): proposed session and remote-attachment contract; the deployed phone UI belongs to Gateway.
 - [External sources](EXTERNAL_REPOS.md) and [upstream revisions](UPSTREAM.md): provenance of referenced harnesses.
 
+## Local setup
+
+Use this repository's environment rather than another project's interpreter:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pytest -q
+```
+
+The default test configuration excludes ignored receipts and archived candidate results, and includes the current `rig_search` package contracts.
+
 ## Current deployment
 
-Gateway and the harness trial runners run on the Pi. The trial runners consume prepared model routes and test agent behavior; they do not own the deployed dashboard conversations. Gateway owns those conversations and its authenticated LAN/mobile front doors. Gateway's Manager still coordinates part of admission and loading; the rig-side Orchestration layer enforces hardware rules and runs admitted model services. A general durable harness session service remains a design; see [future durable sessions](docs/REMOTE_SESSIONS_DESIGN.md).
+Gateway and the Harness run on the Pi. `tools/project_agent.py` is the project-owned bounded turn/tool loop used by delegated local children. It consumes prepared model routes, advertises reviewed MCP schemas, enforces tool and turn budgets, records receipts, and does not own admission or GPU placement. Gateway owns dashboard conversations and its authenticated LAN/mobile front doors. Gateway's Manager still coordinates part of admission and loading; the rig-side Orchestration layer enforces hardware rules and runs admitted model services. The six external harness runners remain comparison lanes under `tools/candidate_controllers/`; they are not the delegated-child engine. A general durable harness session service remains a design; see [future durable sessions](docs/REMOTE_SESSIONS_DESIGN.md).
 
 ## Gateway interface for trials
 
