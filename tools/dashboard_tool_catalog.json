@@ -28,6 +28,10 @@
           "approval": "automatic"
         },
         {
+          "name": "swap_local_agent_model",
+          "approval": "automatic"
+        },
+        {
           "name": "delegate_task",
           "approval": "automatic"
         }

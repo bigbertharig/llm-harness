@@ -98,6 +98,22 @@ LIST_TOOL = {'name': 'list_local_agents',
                             'Local shared-model chats delegate to their own loaded model automatically.',
              'inputSchema': {'type': 'object', 'properties': {}, 'additionalProperties': False}}
 
+SWAP_TOOL = {'name': 'swap_local_agent_model',
+             'description': ('Explicitly replace the currently loaded shared local-agent model. '
+                             'Use only when the user directly asks to swap models; ordinary '
+                             'delegation must never evict a different model implicitly.'),
+             'inputSchema': {'type': 'object', 'properties': {
+                 'candidate_id': {'type': 'string', 'minLength': 1, 'maxLength': 80},
+                 'expected_candidate_id': {'type': 'string', 'minLength': 1, 'maxLength': 80},
+                 'expected_instance_id': {'type': 'string', 'minLength': 1, 'maxLength': 100},
+                 'confirmation': {'type': 'string', 'enum': ['swap local agent model']}},
+                 'required': ['candidate_id', 'expected_candidate_id', 'expected_instance_id',
+                              'confirmation'], 'additionalProperties': False}}
+
+
+def advertised_tools():
+    return [LIST_TOOL, *([SWAP_TOOL] if config.cloud_parent else []), TOOL]
+
 
 def respond(id, result):
     print(json.dumps({'jsonrpc': '2.0', 'id': id, 'result': result}), flush=True)
@@ -113,7 +129,7 @@ def handle(packet):
     elif method == 'ping':
         respond(id, {})
     elif method == 'tools/list':
-        respond(id, {'tools': [LIST_TOOL, TOOL]})
+        respond(id, {'tools': advertised_tools()})
     elif method == 'tools/call':
         params = packet.get('params') or {}
         if not isinstance(params, dict):
@@ -140,6 +156,32 @@ def handle(packet):
                              'structuredContent': catalog})
             except Exception as exc:
                 respond(id, {'isError': True, 'content': [{'type': 'text', 'text': f'{type(exc).__name__}: {exc}'}]})
+            return
+        if params.get('name') == SWAP_TOOL['name']:
+            if (not config.cloud_parent or set(arguments) != {
+                    'candidate_id', 'expected_candidate_id', 'expected_instance_id', 'confirmation'}
+                    or arguments.get('confirmation') != 'swap local agent model'
+                    or not all(isinstance(arguments.get(key), str) and arguments[key]
+                               for key in ('candidate_id', 'expected_candidate_id',
+                                           'expected_instance_id'))):
+                respond(id, {'isError': True, 'content': [{'type': 'text',
+                        'text': 'invalid swap_local_agent_model arguments'}]})
+                return
+            try:
+                headers = {'Content-Type': 'application/json'}
+                if os.environ.get('LLM_GATEWAY_API_KEY'):
+                    headers['Authorization'] = 'Bearer ' + os.environ['LLM_GATEWAY_API_KEY']
+                body = {key: arguments[key] for key in (
+                    'candidate_id', 'expected_candidate_id', 'expected_instance_id')}
+                request = Request('http://127.0.0.1:8080/v1/manager/local-agent-model/swap',
+                                  data=json.dumps(body).encode(), headers=headers, method='POST')
+                with urlopen(request, timeout=300) as response:
+                    result = json.load(response)
+                respond(id, {'content': [{'type': 'text', 'text': json.dumps(result)}],
+                             'structuredContent': result})
+            except Exception as exc:
+                respond(id, {'isError': True, 'content': [{'type': 'text',
+                        'text': f'{type(exc).__name__}: {exc}'}]})
             return
         task = arguments.get('task')
         acceptance_criteria = arguments.get('acceptance_criteria')

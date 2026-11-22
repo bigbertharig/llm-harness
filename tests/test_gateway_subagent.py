@@ -406,8 +406,10 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         tools = json.loads(proc.stdout)['result']['tools']
         self.assertEqual([row['name'] for row in tools],
-                         ['list_local_agents', 'delegate_task'])
-        tool = tools[1]
+                         ['list_local_agents', 'swap_local_agent_model', 'delegate_task'])
+        self.assertEqual(tools[1]['inputSchema']['properties']['confirmation']['enum'],
+                         ['swap local agent model'])
+        tool = tools[2]
         self.assertEqual(tool['name'], 'delegate_task')
         self.assertEqual(set(tool['inputSchema']['properties']),
                          {'agent_type', 'task', 'acceptance_criteria', 'verification',
@@ -427,8 +429,23 @@ class GatewaySubagentRequest(unittest.TestCase):
                                   input=packet, text=True, capture_output=True, timeout=5)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         tools = json.loads(proc.stdout)['result']['tools']
-        self.assertIn('workspace_read', tools[1]['inputSchema']['properties']['tool_profile']['enum'])
-        self.assertIn('workspace_git', tools[1]['inputSchema']['properties']['tool_profile']['enum'])
+        self.assertIn('workspace_read', tools[2]['inputSchema']['properties']['tool_profile']['enum'])
+        self.assertIn('workspace_git', tools[2]['inputSchema']['properties']['tool_profile']['enum'])
+
+    def test_cloud_model_swap_requires_explicit_confirmation(self):
+        server = Path(__file__).resolve().parents[1] / 'tools/gateway_subagent_mcp.py'
+        with tempfile.TemporaryDirectory() as temp:
+            packet = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+                'params': {'name': 'swap_local_agent_model', 'arguments': {
+                    'candidate_id': 'qwen35_shared_1060',
+                    'expected_candidate_id': 'nemotron74_shared_1060',
+                    'expected_instance_id': 'load-1', 'confirmation': 'yes'}}}) + '\n'
+            proc = subprocess.run([sys.executable, str(server), '--cloud-parent',
+                                   '--receipt-dir', temp], input=packet, text=True,
+                                  capture_output=True, timeout=5)
+        result = json.loads(proc.stdout)['result']
+        self.assertTrue(result['isError'])
+        self.assertIn('invalid swap_local_agent_model arguments', result['content'][0]['text'])
 
 
 if __name__ == '__main__':

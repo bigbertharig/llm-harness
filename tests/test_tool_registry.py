@@ -19,7 +19,7 @@ def test_registry_has_every_known_surface_and_existing_harness_code():
     assert set(surfaces) == {"local_agents", "gateway_reset", "google_workspace", "github_public", "rig_search", "rig_info", "workspace_read", "workspace_git",
                              "local_control", "private_control", "local_rag_fixture", "daedalmap",
                              "deepwiki", "openai_docs", "cloudflare_docs"}
-    assert sum(len(surface["tools"]) for surface in surfaces.values()) == 69
+    assert sum(len(surface["tools"]) for surface in surfaces.values()) == 70
     for name, surface in surfaces.items():
         assert surface["tools"] or surface["status"] == "discovery_pending", name
         names = [tool["name"] for tool in surface["tools"]]
@@ -41,7 +41,7 @@ def test_dashboard_catalog_is_generated_from_registry():
 def test_tool_categories_and_live_daedalmap_discovery():
     files = ("tool_registry.json", "tool_fixtures.json")
     categories = [json.loads((ROOT / "tools" / name).read_text())["surfaces"] for name in files]
-    assert [sum(len(surface["tools"]) for surface in group.values()) for group in categories] == [69, 6]
+    assert [sum(len(surface["tools"]) for surface in group.values()) for group in categories] == [70, 6]
     names = [name for group in categories for name in group]
     assert len(names) == len(set(names))
     assert categories[0]["daedalmap"]["category"] == "external"
@@ -58,7 +58,7 @@ def test_tool_categories_and_live_daedalmap_discovery():
     assert set(tool["name"] for tool in categories[0]["rig_search"]["tools"]) == {
         "search_web", "fetch_page", "search_fixture_web", "fetch_fixture_page"}
     assert set(tool["name"] for tool in categories[0]["local_agents"]["tools"]) == {
-        "list_local_agents", "delegate_task", "delegate_fixture_task"}
+        "list_local_agents", "swap_local_agent_model", "delegate_task", "delegate_fixture_task"}
     assert set(tool["name"] for tool in categories[0]["workspace_read"]["tools"]) == {
         "list_workspace_files", "find_workspace_files", "read_workspace_file",
         "read_workspace_document_chunk", "search_workspace_text"}
