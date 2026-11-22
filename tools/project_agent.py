@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 from child_policy import (MAX_MODEL_STEPS, MAX_TOOL_BATCH_CALLS, MAX_TOOL_ERRORS,
                           ToolBudget, validate_request)
+from harness_core import decide_terminal
 from child_public_tools import call_tool, parse_requests
 from child_public_tools import MAX_MCP_LINE_CHARS
 from ready_roster import fetch_ready_roster
@@ -245,6 +246,24 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     error = None
     started = time.monotonic()
 
+    def apply_terminal_policy(step_number: int, finish_reason: str | None) -> str:
+        nonlocal error, tools_enabled, truncation_repair_attempted
+        decision = decide_terminal(answer=answer, finish_reason=finish_reason,
+                                   repair_attempted=truncation_repair_attempted,
+                                   can_repair=step_number < MAX_MODEL_STEPS)
+        if decision.action == "repair":
+            truncation_repair_attempted = True
+            tools_enabled = False
+            target_chars = max(200, min(2000, max_tokens * 2))
+            messages.append({'role': 'assistant', 'content': answer})
+            messages.append({'role': 'user', 'content':
+                f'FINAL FORMAT REPAIR: The prior answer was truncated. Rewrite the complete '
+                f'answer in at most {target_chars} characters. Keep only the result, essential '
+                'evidence, actual verification, and limitations. Do not request tools.'})
+        elif decision.action == "fail":
+            error = decision.reason
+        return decision.action
+
     for step_number in range(1, MAX_MODEL_STEPS + 1):
         if cancel_path and cancel_path.exists():
             error = 'cancelled'
@@ -268,19 +287,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         steps.append(step)
 
         if not tool_server or not tools_enabled:
-            if not answer:
-                error = 'model returned an empty answer'
-            elif choice.get('finish_reason') == 'length':
-                if not truncation_repair_attempted and step_number < MAX_MODEL_STEPS:
-                    truncation_repair_attempted = True
-                    target_chars = max(200, min(2000, max_tokens * 2))
-                    messages.append({'role': 'assistant', 'content': answer})
-                    messages.append({'role': 'user', 'content':
-                        f'FINAL FORMAT REPAIR: The prior answer was truncated. Rewrite the complete '
-                        f'answer in at most {target_chars} characters. Keep only the result, essential '
-                        'evidence, actual verification, and limitations. Do not request tools.'})
-                    continue
-                error = 'model final answer hit the output-token limit'
+            if apply_terminal_policy(step_number, choice.get('finish_reason')) == 'repair':
+                continue
             break
 
         try:
@@ -312,8 +320,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             break
         if not pending:
             if any(not row['is_error'] for row in tool_calls):
-                if not answer:
-                    error = 'model returned no final answer after tool evidence'
+                if apply_terminal_policy(step_number, choice.get('finish_reason')) == 'repair':
+                    continue
                 break
             if repair_attempted:
                 error = 'model did not execute an allowed tool'

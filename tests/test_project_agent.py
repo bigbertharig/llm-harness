@@ -163,6 +163,29 @@ class ProjectAgentTests(unittest.TestCase):
         self.assertEqual(result['error'], 'model final answer hit the output-token limit')
         self.assertEqual(result['model_steps'], 2)
 
+    def test_truncated_answer_after_tool_evidence_gets_bounded_repair(self):
+        request = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
+                              'arguments': {'path': 'README.md'}})
+        replies = iter([packet(request), packet('cut off', finish='length'),
+                        packet('Complete concise answer.')])
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
+                  'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
+                                   'inputSchema': {'type': 'object'}}], 'command': ['fixture']}
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool', return_value={
+                 'isError': False, 'structuredContent': {'path': 'README.md'}}):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='inspect', agent_type='research', tool_profile='workspace_read',
+                tool_server=server, workspace_root=Path(temp), complete=lambda *_: next(replies))
+
+        self.assertIsNone(result['error'])
+        self.assertEqual(result['answer'], 'Complete concise answer.')
+        self.assertTrue(result['truncation_repair_attempted'])
+        self.assertTrue(result['limits']['output_limit_hit'])
+        self.assertEqual(result['model_steps'], 3)
+
     def test_executes_allowlisted_tool_then_requires_final_answer(self):
         replies = iter([packet(json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
                                            'arguments': {'path': 'README.md', 'start_line': 1,

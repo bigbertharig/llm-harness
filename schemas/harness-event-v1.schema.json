@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bigbertha.local/schemas/harness-event-v1.schema.json",
+  "title": "Big Bertha Harness Event v1",
+  "type": "object",
+  "required": ["schema_version", "event_id", "run_id", "sequence", "type", "occurred_at", "payload"],
+  "properties": {
+    "schema_version": {"const": "harness-event/v1"},
+    "event_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "sequence": {"type": "integer", "minimum": 0},
+    "type": {"type": "string", "minLength": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "conversation_id": {"type": "string", "minLength": 1},
+    "model_step_id": {"type": "string", "minLength": 1},
+    "tool_call_id": {"type": "string", "minLength": 1},
+    "approval_id": {"type": "string", "minLength": 1},
+    "attempt_id": {"type": "string", "minLength": 1},
+    "compaction_id": {"type": "string", "minLength": 1},
+    "child_run_id": {"type": "string", "minLength": 1},
+    "payload": {"type": "object"}
+  },
+  "additionalProperties": false
+}

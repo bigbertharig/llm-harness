@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bigbertha.local/schemas/harness-run-v1.schema.json",
+  "title": "Big Bertha Harness Run v1",
+  "type": "object",
+  "required": ["schema_version", "run_id", "case_id", "harness", "model", "environment", "budgets", "terminal"],
+  "properties": {
+    "schema_version": {"const": "harness-run/v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "case_id": {"type": "string", "minLength": 1},
+    "fixture_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "harness": {"type": "object", "required": ["name", "version"], "additionalProperties": true},
+    "model": {"type": "object", "required": ["requested_route", "served_model"], "additionalProperties": true},
+    "environment": {"type": "object", "additionalProperties": true},
+    "budgets": {"type": "object", "additionalProperties": true},
+    "events_ref": {"type": ["string", "null"]},
+    "artifacts": {"type": "array"},
+    "scores": {"type": "object"},
+    "failure": {"type": ["object", "null"]},
+    "terminal": {
+      "type": "object",
+      "required": ["state", "reason"],
+      "properties": {
+        "state": {"enum": ["succeeded", "failed", "cancelled", "timed_out"]},
+        "reason": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "cleanup": {"type": "object"}
+  },
+  "additionalProperties": false
+}

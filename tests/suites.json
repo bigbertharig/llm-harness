@@ -2,6 +2,7 @@
   "agent_runtime": {
     "purpose": "Project-owned agent loop, child policy, delegated turns, MCP guards, and Codex response compatibility",
     "tests": [
+      "tests/test_harness_core.py",
       "tests/test_project_agent.py",
       "tests/test_gateway_subagent.py",
       "tests/test_child_policy.py",
