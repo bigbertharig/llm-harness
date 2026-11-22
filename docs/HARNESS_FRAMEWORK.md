@@ -28,8 +28,12 @@ events and a terminal receipt.
 
 ## Implementation sequence
 
-- P0a: canonical schemas and centralized terminal classification.
-- P0b: scripted provider simulator and pure reducer tests.
+- P0a (built): canonical schemas and centralized terminal classification.
+- P0b (built foundation): scripted provider transport and a pure reducer for ordered model, tool,
+  retry, compaction, child, input, and terminal events. Conformance tests cover full tool
+  lifecycle, truncation repair, sequence/link rejection, transport errors, malformed provider
+  payloads, and defensive request/response copies. Provider adapters still need to be migrated to
+  emit these events before P0b is considered integrated.
 - P0c: append-only journal plus exactly-once tool reconciliation.
 - P0d: harness-owned complete-document driver and bounded compaction transaction.
 - P1: MCP shape matrix, delayed jobs, queue/steer ordering, and child lifecycle.

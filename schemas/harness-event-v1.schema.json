@@ -9,7 +9,16 @@
     "event_id": {"type": "string", "minLength": 1},
     "run_id": {"type": "string", "minLength": 1},
     "sequence": {"type": "integer", "minimum": 0},
-    "type": {"type": "string", "minLength": 1},
+    "type": {"enum": [
+      "run.started", "run.succeeded", "run.failed", "run.cancelled", "run.timed_out",
+      "model.started", "model.completed", "model.failed", "model.truncated",
+      "tool.proposed", "tool.validated", "tool.approved", "tool.executing",
+      "tool.committed", "tool.failed", "tool.result_persisted", "tool.result_delivered",
+      "compaction.started", "compaction.checkpointed", "compaction.committed", "compaction.aborted",
+      "retry.scheduled", "retry.started", "retry.exhausted",
+      "child.delegated", "child.completed", "child.cancelled",
+      "input.queued", "input.steered", "input.applied"
+    ]},
     "occurred_at": {"type": "string", "format": "date-time"},
     "conversation_id": {"type": "string", "minLength": 1},
     "model_step_id": {"type": "string", "minLength": 1},
