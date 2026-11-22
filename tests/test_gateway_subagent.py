@@ -177,6 +177,7 @@ class GatewaySubagentRequest(unittest.TestCase):
                     {'name': 'list_workspace_files', 'approval': 'automatic'},
                     {'name': 'find_workspace_files', 'approval': 'automatic'},
                     {'name': 'read_workspace_file', 'approval': 'automatic'},
+                    {'name': 'read_workspace_document_chunk', 'approval': 'automatic'},
                     {'name': 'search_workspace_text', 'approval': 'automatic'}]}}}))
             server = root / 'workspace_read_mcp.py'
             server.write_text('')

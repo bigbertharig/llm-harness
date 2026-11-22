@@ -22,7 +22,8 @@ from workspace_git_mcp import TOOLS as WORKSPACE_GIT_TOOL_DEFINITIONS
 
 
 WORKSPACE_TOOLS = ('list_workspace_files', 'find_workspace_files',
-                   'read_workspace_file', 'search_workspace_text')
+                   'read_workspace_file', 'read_workspace_document_chunk',
+                   'search_workspace_text')
 WORKSPACE_GIT_TOOLS = ('get_workspace_git_status', 'get_workspace_git_log',
                        'get_workspace_git_diff', 'get_workspace_git_commit',
                        'compare_workspace_git_revisions',
@@ -126,7 +127,9 @@ def _evidence_metadata(tool: str, evidence) -> dict:
     if not isinstance(evidence, dict):
         return {}
     common = ('path', 'start_line', 'end_line', 'requested_range_complete',
-              'more_lines_after', 'truncated', 'files_scanned')
+              'more_lines_after', 'truncated', 'files_scanned',
+              'snapshot_sha256', 'total_bytes', 'total_characters',
+              'cursor_start', 'cursor_end', 'next_cursor', 'complete')
     metadata = {key: evidence[key] for key in common if key in evidence}
     if tool in ('find_workspace_files', 'search_workspace_text'):
         matches = evidence.get('matches')
@@ -160,6 +163,35 @@ def _file_evidence_coverage(tool_calls: list[dict]) -> list[dict]:
                 reached_eof = cursor > end
         summaries.append({'path': path, 'start_line': 1, 'through_line': max(0, cursor - 1),
                           'complete_file': reached_eof, 'calls': len(rows)})
+    return summaries
+
+
+def _document_evidence_coverage(tool_calls: list[dict]) -> list[dict]:
+    """Prove contiguous character coverage for one immutable document snapshot."""
+    grouped: dict[tuple[str, str], list[dict]] = {}
+    for row in tool_calls:
+        if row.get('tool') != 'read_workspace_document_chunk' or row.get('is_error'):
+            continue
+        evidence = row.get('evidence') or {}
+        path, snapshot = evidence.get('path'), evidence.get('snapshot_sha256')
+        if isinstance(path, str) and isinstance(snapshot, str):
+            grouped.setdefault((path, snapshot), []).append(evidence)
+    summaries = []
+    for (path, snapshot), rows in sorted(grouped.items()):
+        cursor = 0
+        total = None
+        for row in sorted(rows, key=lambda item: (item.get('cursor_start', 0),
+                                                   item.get('cursor_end', 0))):
+            if type(row.get('total_characters')) is int:
+                total = row['total_characters']
+            start, end = row.get('cursor_start'), row.get('cursor_end')
+            if type(start) is not int or type(end) is not int or start > cursor or end < start:
+                continue
+            cursor = max(cursor, end)
+        summaries.append({'path': path, 'snapshot_sha256': snapshot,
+                          'through_character': cursor, 'total_characters': total,
+                          'complete_document': total is not None and cursor == total,
+                          'calls': len(rows)})
     return summaries
 
 
@@ -378,6 +410,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             'steps': steps, 'tool_calls': len(tool_calls),
             'tool_call_summary': tool_calls, 'tool_budget': budget.receipt(),
             'file_evidence_coverage': _file_evidence_coverage(tool_calls),
+            'document_evidence_coverage': _document_evidence_coverage(tool_calls),
             'tool_batch_limit': MAX_TOOL_BATCH_CALLS,
             'tool_format_repair_attempted': repair_attempted,
             'truncation_repair_attempted': truncation_repair_attempted}

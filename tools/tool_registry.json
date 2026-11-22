@@ -204,6 +204,10 @@
           "approval": "automatic"
         },
         {
+          "name": "read_workspace_document_chunk",
+          "approval": "automatic"
+        },
+        {
           "name": "search_workspace_text",
           "approval": "automatic"
         }

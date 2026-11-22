@@ -24,7 +24,8 @@ SENSITIVE_QUERY = re.compile(r'(?i)(?:api[_-]?key|access[_-]?token|password|secr
 def validate_request(profile: str, tool: str, arguments: dict, workspace_root: Path | None) -> None:
     allowed = {'public_research': {'search_web', 'fetch_page'},
                'workspace_read': {'list_workspace_files', 'find_workspace_files',
-                                  'read_workspace_file', 'search_workspace_text'},
+                                  'read_workspace_file', 'read_workspace_document_chunk',
+                                  'search_workspace_text'},
                'workspace_git': {'get_workspace_git_status', 'get_workspace_git_log',
                                  'get_workspace_git_diff', 'get_workspace_git_commit',
                                  'compare_workspace_git_revisions',

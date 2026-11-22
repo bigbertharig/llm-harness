@@ -19,7 +19,7 @@ All 74 registry and fixture names are distinct. Prototype tools are available to
 | `rig_search` | Dashboard + prototypes | `search_web`, `fetch_page`; prototype `search_fixture_web`, `fetch_fixture_page` |
 | `local_agents` | Dashboard + prototype | `list_local_agents`, `delegate_task`; prototype `delegate_fixture_task` |
 | `rig_info` | Dashboard | `get_rig_status`, `get_model_status`, `get_benchmark_status`, `get_orchestration_status`, `get_orchestration_diagnostics`, `get_orchestration_activity` |
-| `workspace_read` | Dashboard Coding and delegated coding children | `list_workspace_files`, `find_workspace_files`, `read_workspace_file`, `search_workspace_text` |
+| `workspace_read` | Dashboard Coding and delegated coding children | `list_workspace_files`, `find_workspace_files`, `read_workspace_file`, `read_workspace_document_chunk`, `search_workspace_text` |
 | `workspace_git` | Dashboard Coding | Status, log, working-tree diff, commit inspection, revision comparison, historical file read, file history |
 | `google_workspace` | Dashboard Chat and delegated Chat children, auth gated | Gmail search/read/send; Drive search/read/create-folder/upload-text; Docs create/append; Sheets create/read/update/append |
 | `github_public` | Dashboard Chat | Public repository inspect/list/find/read plus pinned commit inspection, comparison, and file history |

@@ -77,6 +77,50 @@ class WorkspaceReadMcpTests(unittest.TestCase):
                 {'path': 'large.py', 'line': 250, 'preview': 'line 250'}])
             self.assertEqual(found['files_scanned'], 1)
 
+    def test_complete_document_chunks_reconstruct_exact_unicode_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            content = ('section αβγ\n' * 31) + 'final snowman: ☃\n'
+            (root / 'report.md').write_text(content)
+            chunks = []
+            cursor = 0
+            snapshot = None
+            while True:
+                arguments = {'path': 'report.md', 'cursor': cursor, 'max_chars': 100}
+                if snapshot is not None:
+                    arguments['snapshot_sha256'] = snapshot
+                result = call(root, 'read_workspace_document_chunk', arguments)
+                snapshot = result['snapshot_sha256']
+                chunks.append(result['content'])
+                if result['complete']:
+                    self.assertIsNone(result['next_cursor'])
+                    break
+                cursor = result['next_cursor']
+            self.assertEqual(''.join(chunks), content)
+            self.assertEqual(result['cursor_end'], result['total_characters'])
+            self.assertEqual(result['total_bytes'], len(content.encode('utf-8')))
+
+    def test_complete_document_snapshot_and_cursor_are_enforced(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = root / 'report.md'
+            target.write_text('a' * 250)
+            first = call(root, 'read_workspace_document_chunk', {
+                'path': 'report.md', 'cursor': 0, 'max_chars': 100})
+            with self.assertRaisesRegex(ValueError, 'snapshot_sha256'):
+                call(root, 'read_workspace_document_chunk', {
+                    'path': 'report.md', 'cursor': first['next_cursor'], 'max_chars': 100})
+            target.write_text('b' * 250)
+            with self.assertRaisesRegex(ValueError, 'changed'):
+                call(root, 'read_workspace_document_chunk', {
+                    'path': 'report.md', 'cursor': first['next_cursor'],
+                    'snapshot_sha256': first['snapshot_sha256'], 'max_chars': 100})
+            with self.assertRaisesRegex(ValueError, 'beyond'):
+                call(root, 'read_workspace_document_chunk', {
+                    'path': 'report.md', 'cursor': 300,
+                    'snapshot_sha256': call(root, 'read_workspace_document_chunk', {
+                        'path': 'report.md'})['snapshot_sha256']})
+
     def test_file_swapped_to_symlink_before_open_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / 'workspace'
@@ -112,7 +156,7 @@ class WorkspaceReadMcpTests(unittest.TestCase):
         responses = [json.loads(line) for line in proc.stdout.splitlines()]
         self.assertEqual([tool['name'] for tool in responses[0]['result']['tools']],
                          ['list_workspace_files', 'find_workspace_files', 'read_workspace_file',
-                          'search_workspace_text'])
+                          'read_workspace_document_chunk', 'search_workspace_text'])
         self.assertEqual(responses[1]['result']['structuredContent']['content'], 'A small workspace')
 
 

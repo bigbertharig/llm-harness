@@ -9,7 +9,8 @@
         "workspace_read.list_workspace_files",
         "workspace_read.find_workspace_files",
         "workspace_read.search_workspace_text",
-        "workspace_read.read_workspace_file"
+        "workspace_read.read_workspace_file",
+        "workspace_read.read_workspace_document_chunk"
       ],
       "preferred_candidates": [],
       "allow_cold_load": false,

@@ -3,6 +3,7 @@
 
 import argparse
 from contextlib import contextmanager
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -28,6 +29,13 @@ TOOLS = [
          'path': {'type': 'string', 'minLength': 1, 'maxLength': 300},
          'start_line': {'type': 'integer', 'minimum': 1, 'maximum': 50000},
          'max_lines': {'type': 'integer', 'minimum': 1, 'maximum': 500},
+         'max_chars': {'type': 'integer', 'minimum': 100, 'maximum': 12000}},
+         'required': ['path'], 'additionalProperties': False}},
+    {'name': 'read_workspace_document_chunk', 'description': 'Read the next contiguous UTF-8 character chunk from an immutable workspace document snapshot. For a complete read, start with cursor=0, then use exactly next_cursor and the same snapshot_sha256 until complete=true. Never skip or invent a cursor.',
+     'annotations': {'readOnlyHint': True}, 'inputSchema': {'type': 'object', 'properties': {
+         'path': {'type': 'string', 'minLength': 1, 'maxLength': 300},
+         'cursor': {'type': 'integer', 'minimum': 0, 'maximum': 1000000},
+         'snapshot_sha256': {'type': 'string', 'pattern': '^[0-9a-f]{64}$'},
          'max_chars': {'type': 'integer', 'minimum': 100, 'maximum': 12000}},
          'required': ['path'], 'additionalProperties': False}},
     {'name': 'search_workspace_text', 'description': 'Search a visible UTF-8 file or directory for literal text and return matching file paths and line numbers.',
@@ -183,6 +191,44 @@ def call(root: Path, name: str, args: dict) -> dict:
                     'end_line': end_line, 'requested_range_complete': not content_truncated,
                     'more_lines_after': more_lines_after,
                     'truncated': content_truncated or more_lines_after}
+    if name == 'read_workspace_document_chunk':
+        if (set(args) - {'path', 'cursor', 'snapshot_sha256', 'max_chars'} or
+                not isinstance(args.get('path'), str) or
+                not 1 <= len(args['path']) <= 300 or
+                type(args.get('cursor', 0)) is not int or
+                not 0 <= args.get('cursor', 0) <= 1_000_000 or
+                (args.get('cursor', 0) > 0 and args.get('snapshot_sha256') is None) or
+                (args.get('snapshot_sha256') is not None and
+                 (not isinstance(args['snapshot_sha256'], str) or
+                  len(args['snapshot_sha256']) != 64 or
+                  any(char not in '0123456789abcdef' for char in args['snapshot_sha256']))) or
+                type(args.get('max_chars', 12000)) is not int or
+                not 100 <= args.get('max_chars', 12000) <= 12000):
+            raise ValueError('read_workspace_document_chunk requires path and optional cursor/snapshot_sha256/max_chars')
+        with _open_visible(root, args['path'], directory=False) as (fd, relative):
+            if os.fstat(fd).st_size > 1_000_000:
+                raise ValueError('workspace text file is unavailable or too large')
+            with os.fdopen(os.dup(fd), 'rb') as source:
+                raw = source.read(1_000_001)
+            if len(raw) > 1_000_000:
+                raise ValueError('workspace text file is unavailable or too large')
+            content = raw.decode('utf-8')
+            if '\x00' in content:
+                raise ValueError('binary workspace file is unavailable')
+            snapshot = hashlib.sha256(raw).hexdigest()
+            expected = args.get('snapshot_sha256')
+            if expected is not None and expected != snapshot:
+                raise ValueError('workspace document changed during complete read')
+            cursor = args.get('cursor', 0)
+            if cursor > len(content):
+                raise ValueError('document cursor is beyond the end of the snapshot')
+            end = min(len(content), cursor + args.get('max_chars', 12000))
+            complete = end == len(content)
+            return {'path': relative, 'snapshot_sha256': snapshot,
+                    'total_bytes': len(raw), 'total_characters': len(content),
+                    'cursor_start': cursor, 'cursor_end': end,
+                    'content': content[cursor:end],
+                    'next_cursor': None if complete else end, 'complete': complete}
     if name == 'search_workspace_text':
         if (set(args) - {'query', 'path'} or not isinstance(args.get('query'), str)
                 or not 2 <= len(args['query']) <= 100 or '\x00' in args['query']):

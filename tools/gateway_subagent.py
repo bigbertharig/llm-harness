@@ -62,7 +62,7 @@ def _validate_child_tools(tool_profile: str, workspace_root: Path | None = None)
             raise ValueError('public research MCP server or provider config is unavailable')
     elif tool_profile == 'workspace_read':
         names = ('list_workspace_files', 'find_workspace_files', 'read_workspace_file',
-                 'search_workspace_text')
+                 'read_workspace_document_chunk', 'search_workspace_text')
         surface = registry['surfaces']['workspace_read']
         approved = {row['name'] for row in surface['tools'] if row.get('approval') == 'automatic'}
         if (surface.get('status') != 'dashboard' or approved != set(names) or
@@ -103,7 +103,7 @@ def _child_tools(agent: Path, out: Path, tool_profile: str,
     elif tool_profile == 'workspace_read':
         server_name = 'workspace_read'
         names = ('list_workspace_files', 'find_workspace_files', 'read_workspace_file',
-                 'search_workspace_text')
+                 'read_workspace_document_chunk', 'search_workspace_text')
         args = [str(WORKSPACE_SERVER), '--root', str(workspace_root)]
     elif tool_profile == 'workspace_git':
         server_name = 'workspace_git'

@@ -202,6 +202,29 @@ class ProjectAgentTests(unittest.TestCase):
             'path': 'doc.md', 'start_line': 1, 'through_line': 15,
             'complete_file': True, 'calls': 2}])
 
+    def test_document_coverage_requires_one_contiguous_snapshot(self):
+        calls = [
+            {'tool': 'read_workspace_document_chunk', 'is_error': False, 'evidence': {
+                'path': 'doc.md', 'snapshot_sha256': 'a' * 64,
+                'cursor_start': 0, 'cursor_end': 100, 'total_characters': 250}},
+            {'tool': 'read_workspace_document_chunk', 'is_error': False, 'evidence': {
+                'path': 'doc.md', 'snapshot_sha256': 'a' * 64,
+                'cursor_start': 100, 'cursor_end': 250, 'total_characters': 250,
+                'complete': True}},
+            {'tool': 'read_workspace_document_chunk', 'is_error': False, 'evidence': {
+                'path': 'doc.md', 'snapshot_sha256': 'b' * 64,
+                'cursor_start': 100, 'cursor_end': 250, 'total_characters': 250,
+                'complete': True}},
+        ]
+        self.assertEqual(project_agent._document_evidence_coverage(calls), [
+            {'path': 'doc.md', 'snapshot_sha256': 'a' * 64,
+             'through_character': 250, 'total_characters': 250,
+             'complete_document': True, 'calls': 2},
+            {'path': 'doc.md', 'snapshot_sha256': 'b' * 64,
+             'through_character': 0, 'total_characters': 250,
+             'complete_document': False, 'calls': 1},
+        ])
+
     def test_repeated_call_forces_one_tool_free_final_answer(self):
         request = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
                               'arguments': {'path': 'README.md'}})
