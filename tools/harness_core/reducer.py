@@ -197,10 +197,17 @@ def reduce_event(state: RunState, event: dict) -> RunState:
     elif event_type == "tool.failed":
         call = _link(event, "tool_call_id")
         index, current = _linked(state.tools, call)
-        if current is None or current.state not in {"proposed", "validated", "approved", "executing"}:
-            raise InvalidTransition("tool.failed requires an uncommitted active tool call")
+        if current is None or current.state not in {"proposed", "validated", "approved"}:
+            raise InvalidTransition("tool.failed requires a tool call that was not dispatched")
         updated = replace(state, tools=_replace_link(
             state.tools, index, ToolState(call, "failed", current.argument_digest)))
+    elif event_type == "tool.uncertain":
+        call = _link(event, "tool_call_id")
+        index, current = _linked(state.tools, call)
+        if current is None or current.state != "executing":
+            raise InvalidTransition("tool.uncertain requires a dispatched tool call")
+        updated = replace(state, tools=_replace_link(
+            state.tools, index, ToolState(call, "uncertain", current.argument_digest)))
     elif event_type == "retry.scheduled":
         if not state.needs_repair or state.retry_state not in (None, "attempt_failed"):
             raise InvalidTransition("retry may be scheduled only for a failed or truncated step")
@@ -241,7 +248,7 @@ def reduce_event(state: RunState, event: dict) -> RunState:
     elif event_type in _TERMINAL_EVENTS:
         if state.active_model_step_id or state.active_compaction_id:
             raise InvalidTransition("active work must settle before run termination")
-        if any(tool.state not in {"result_delivered", "failed"} for tool in state.tools):
+        if any(tool.state not in {"result_delivered", "failed", "uncertain"} for tool in state.tools):
             raise InvalidTransition("tool calls must settle before run termination")
         if any(child.state == "active" for child in state.children):
             raise InvalidTransition("child runs must settle before run termination")

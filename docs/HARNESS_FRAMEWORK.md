@@ -8,18 +8,22 @@ tool execution, recovery, and terminal classification are deterministic project-
 
 1. **Contracts** — versioned run and event schemas, route/model identity, budgets, grants, fixture
    identity, and terminal reasons.
-2. **Adapters** — translate Chat Completions, Responses, MCP, and validated text bridges into the
+2. **Provenance boundary** — operator objectives remain separate from uploads, repositories, web
+   pages, external messages, and tool results. External content is admitted as typed, digest-bound
+   `untrusted_evidence`; callers cannot supply its role or trust. Evidence can inform an answer but
+   cannot alter grants, approvals, policy, or the objective.
+3. **Adapters** — translate Chat Completions, Responses, MCP, and validated text bridges into the
    canonical event vocabulary. Adapters do not decide permissions or success.
-3. **Reducer** — a pure state machine consumes ordered events and decides the next allowed action.
+4. **Reducer** — a pure state machine consumes ordered events and decides the next allowed action.
    Every loop has a bound and progress invariant.
-4. **Tool broker** — discovery, schema normalization, validation, approval binding, idempotency,
+5. **Tool broker** — discovery, schema normalization, validation, approval binding, idempotency,
    execution, reconciliation, and result persistence are distinct transitions.
-5. **Drivers** — deterministic multi-step operations such as complete-document reading and delayed
+6. **Drivers** — deterministic multi-step operations such as complete-document reading and delayed
    jobs own their cursors/checkpoints. Models interpret evidence; they do not control mechanical
    progress loops.
-6. **Journal and receipts** — append-only events are the recovery source of truth. A versioned run
+7. **Journal and receipts** — append-only events are the recovery source of truth. A versioned run
    receipt references events and protected artifacts, while redacting sensitive payloads by default.
-7. **Policies** — retry, compaction, delegation, cancellation, and finalization are small replaceable
+8. **Policies** — retry, compaction, delegation, cancellation, and finalization are small replaceable
    policies tested with fake providers and clocks.
 
 Gateway owns conversations, operator policy, and requested work. Orchestration alone owns hardware
@@ -29,17 +33,22 @@ events and a terminal receipt.
 ## Implementation sequence
 
 - P0a (built): canonical schemas and centralized terminal classification.
-- P0b (built foundation): scripted provider transport and a pure reducer for ordered model, tool,
+- P0b (integrated): scripted provider transport and a pure reducer for ordered model, tool,
   retry, compaction, child, input, and terminal events. Conformance tests cover full tool
   lifecycle, truncation repair, sequence/link rejection, transport errors, malformed provider
-  payloads, and defensive request/response copies. Provider adapters still need to be migrated to
-  emit these events before P0b is considered integrated.
-- P0c (built foundation): a private JSONL journal validates the pure reducer under an exclusive
+  payloads, and defensive request/response copies. The active project-agent adapter now emits the
+  same canonical events used by these conformance tests.
+- P0c (integrated for the project agent): a private JSONL journal validates the pure reducer under an exclusive
   process lock and fsyncs every accepted event. Recovery policy resumes validation/approval,
   permits execution only from the durable `approved` state, and treats `executing` as an uncertain
   outcome that must be reconciled rather than repeated. Committed results are persisted and then
-  delivered as separate steps. Active adapters still need to adopt the journal and supply
-  tool-specific reconciliation before P0c is considered integrated.
+  delivered as separate steps. Tool results are private artifacts and model-visible results cross
+  the provenance boundary as untrusted evidence. Tool-specific reconciliation remains required
+  before write-capable profiles can recover an uncertain dispatch automatically.
+- P0-security (integrated boundary): uploaded files and all other external evidence have fixed
+  source types, origins, content digests, and system-owned trust. Receipts retain provenance without
+  copying content. Allowlist validation and approvals remain the authority boundary; prompt labels
+  are defense in depth, not the security mechanism.
 - P0d: harness-owned complete-document driver and bounded compaction transaction.
 - P1: MCP shape matrix, delayed jobs, queue/steer ordering, and child lifecycle.
 - P2/P3: repeated live reliability, security adversaries, endurance, and pinned external subsets.

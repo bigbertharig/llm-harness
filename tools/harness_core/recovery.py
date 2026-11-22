@@ -32,5 +32,7 @@ def decide_tool_recovery(state: RunState, tool_call_id: str) -> RecoveryDecision
         "result_delivered": RecoveryDecision("done", "tool result was already delivered", digest),
         "failed": RecoveryDecision(
             "done", "tool call already reached a failed terminal state", digest),
+        "uncertain": RecoveryDecision(
+            "reconcile", "dispatch outcome is unknown; repeating it is unsafe", digest),
     }
     return decisions.get(tool.state, RecoveryDecision("fail", "tool state is not recoverable"))

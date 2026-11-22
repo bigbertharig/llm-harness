@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,7 +14,7 @@ from urllib.request import Request, urlopen
 
 from child_policy import (MAX_MODEL_STEPS, MAX_TOOL_BATCH_CALLS, MAX_TOOL_ERRORS,
                           ToolBudget, validate_request)
-from harness_core import decide_terminal
+from harness_core import RunRecorder, admit_evidence, decide_terminal, prepare_evidence, render_evidence
 from child_public_tools import call_tool, parse_requests
 from child_public_tools import MAX_MCP_LINE_CHARS
 from ready_roster import fetch_ready_roster
@@ -201,6 +202,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
               workspace_root: Path | None = None, max_tokens: int = 1024,
               timeout_s: int = 180, max_tool_calls: int = 12,
               cancel_path: Path | None = None,
+              evidence_blocks: list[dict] | None = None,
+              journal_root: Path | None = None,
               complete=_completion) -> dict:
     """Run a bounded direct loop and return a model-neutral execution receipt."""
     if type(max_tokens) is not int or not 1 <= max_tokens <= MAX_AGENT_OUTPUT_TOKENS:
@@ -232,8 +235,12 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     if tool_server:
         system += _tool_instruction(tool_server, max_tool_calls)
     advertised_tools = _openai_tools(tool_server)
+    external_messages, external_provenance = prepare_evidence(evidence_blocks)
     messages = [{'role': 'system', 'content': system},
-                {'role': 'user', 'content': child_task_envelope(prompt)}]
+                {'role': 'user', 'content': child_task_envelope(prompt)},
+                *external_messages]
+    recorder = RunRecorder(journal_root)
+    recorder.emit('run.started', payload={'engine': 'big-bertha-project-agent'})
     budget = ToolBudget(max_tool_calls)
     attempted: set[str] = set()
     tool_calls: list[dict] = []
@@ -246,12 +253,19 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     error = None
     started = time.monotonic()
 
+    def digest_request(name: str, arguments: dict) -> str:
+        normalized = json.dumps({'name': name, 'arguments': arguments}, sort_keys=True,
+                                separators=(',', ':')).encode('utf-8')
+        return hashlib.sha256(normalized).hexdigest()
+
     def apply_terminal_policy(step_number: int, finish_reason: str | None) -> str:
         nonlocal error, tools_enabled, truncation_repair_attempted
         decision = decide_terminal(answer=answer, finish_reason=finish_reason,
                                    repair_attempted=truncation_repair_attempted,
                                    can_repair=step_number < MAX_MODEL_STEPS)
         if decision.action == "repair":
+            recorder.emit('retry.scheduled', payload={'reason': decision.reason})
+            recorder.emit('retry.started', payload={})
             truncation_repair_attempted = True
             tools_enabled = False
             target_chars = max(200, min(2000, max_tokens * 2))
@@ -272,12 +286,17 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         if remaining <= 0:
             error = 'timeout'
             break
+        model_step_id = f'model-{step_number}'
+        recorder.emit('model.started', model_step_id=model_step_id,
+                      payload={'route': route})
         try:
             packet = complete(gateway, route, messages, max_tokens, remaining,
                               os.environ.get('LLM_GATEWAY_API_KEY'),
                               advertised_tools if tools_enabled else [])
         except Exception as exc:
             error = f'{type(exc).__name__}: {exc}'
+            recorder.emit('model.failed', model_step_id=model_step_id,
+                          payload={'finish_reason': 'provider_error'})
             break
         answer = _message_text(packet).strip()
         choice = packet['choices'][0]
@@ -287,6 +306,10 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         steps.append(step)
 
         if not tool_server or not tools_enabled:
+            model_event = ('model.truncated' if choice.get('finish_reason') == 'length'
+                           else 'model.completed')
+            recorder.emit(model_event, model_step_id=model_step_id,
+                          payload={'finish_reason': choice.get('finish_reason')})
             if apply_terminal_policy(step_number, choice.get('finish_reason')) == 'repair':
                 continue
             break
@@ -295,6 +318,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             native_requests = _native_requests(packet, tool_server)
         except AgentLoopError as exc:
             error = str(exc)
+            recorder.emit('model.failed', model_step_id=model_step_id,
+                          payload={'finish_reason': 'invalid_tool_request'})
             break
         requests = [(name, arguments) for name, arguments, _ident in native_requests]
         if not requests:
@@ -302,12 +327,25 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                                       max_calls=MAX_TOOL_BATCH_CALLS)
         native_ids = {(name, json.dumps(arguments, sort_keys=True)): ident
                       for name, arguments, ident in native_requests}
+        canonical_finish = 'tool_calls' if requests else choice.get('finish_reason')
+        model_event = ('model.truncated' if not requests and canonical_finish == 'length'
+                       else 'model.completed')
+        recorder.emit(model_event, model_step_id=model_step_id,
+                      payload={'finish_reason': canonical_finish})
         pending = []
         for name, arguments in requests:
             fingerprint = json.dumps((name, arguments), sort_keys=True)
             if fingerprint not in attempted:
                 pending.append((name, arguments, fingerprint))
         if requests and not pending:
+            for request_index, (name, arguments) in enumerate(requests, 1):
+                call_id = (native_ids.get((name, json.dumps(arguments, sort_keys=True)))
+                           or f'tool-{step_number}-{request_index}')
+                recorder.emit('tool.proposed', tool_call_id=call_id,
+                              payload={'name': name,
+                                       'argument_digest': digest_request(name, arguments)})
+                recorder.emit('tool.failed', tool_call_id=call_id,
+                              payload={'reason': 'duplicate request'})
             if any(not row['is_error'] for row in tool_calls) and step_number < MAX_MODEL_STEPS:
                 tools_enabled = False
                 messages.append(packet['choices'][0]['message'] if native_requests else
@@ -335,25 +373,59 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             continue
 
         evidence_batch = []
-        for name, arguments, fingerprint in pending:
+        for request_index, (name, arguments, fingerprint) in enumerate(pending, 1):
             attempted.add(fingerprint)
+            call_id = (native_ids.get((name, json.dumps(arguments, sort_keys=True)))
+                       or f'tool-{step_number}-{request_index}')
+            argument_digest = digest_request(name, arguments)
+            recorder.emit('tool.proposed', tool_call_id=call_id,
+                          payload={'name': name, 'argument_digest': argument_digest})
             try:
                 budget.before_call()
                 validate_request(tool_profile, name, arguments, workspace_root)
+                recorder.emit('tool.validated', tool_call_id=call_id, payload={})
+                recorder.emit('tool.approved', tool_call_id=call_id,
+                              approval_id=f'profile-{tool_profile}',
+                              payload={'grant': tool_profile})
+            except Exception as exc:
+                error = f'tool call failed: {type(exc).__name__}: {exc}'
+                recorder.emit('tool.failed', tool_call_id=call_id,
+                              payload={'reason': type(exc).__name__})
+                break
+            recorder.emit('tool.executing', tool_call_id=call_id, payload={})
+            try:
                 result = call_tool(tool_server, name, arguments,
                                    timeout=min(45, max(1, remaining - 5)))
-                evidence = result.get('structuredContent') or result.get('content') or result
+            except Exception as exc:
+                error = f'tool call failed: {type(exc).__name__}: {exc}'
+                recorder.emit('tool.uncertain', tool_call_id=call_id,
+                              payload={'reason': type(exc).__name__})
+                break
+            evidence = result.get('structuredContent') or result.get('content') or result
+            receipt_ref = f'mcp:{tool_server["name"]}:{call_id}'
+            recorder.emit('tool.committed', tool_call_id=call_id,
+                          payload={'argument_digest': argument_digest,
+                                   'receipt_ref': receipt_ref})
+            artifact_ref = recorder.persist_result(call_id, evidence)
+            recorder.emit('tool.result_persisted', tool_call_id=call_id,
+                          payload={'artifact_ref': artifact_ref})
+            is_error = bool(result.get('isError'))
+            try:
                 # MCP commonly mirrors structuredContent as serialized text in
                 # content. Charge the normalized evidence delivered to the model
                 # once, rather than charging both transport representations.
                 budget.record(evidence)
             except Exception as exc:
-                error = f'tool call failed: {type(exc).__name__}: {exc}'
-                break
-            is_error = bool(result.get('isError'))
+                is_error = True
+                evidence = {'harness_error': 'tool result exceeded the evidence budget',
+                            'detail': f'{type(exc).__name__}: {exc}'}
             tool_calls.append({'tool': name, 'arguments': arguments, 'is_error': is_error,
                                'evidence': _evidence_metadata(name, evidence)})
-            evidence_batch.append({'tool': name, 'arguments': arguments, 'result': evidence})
+            admitted = admit_evidence({'source': 'tool_result',
+                                       'origin': f'{tool_server["name"]}/{name}/{call_id}',
+                                       'content': evidence})
+            evidence_batch.append({'tool': name, 'arguments': arguments, 'result': evidence,
+                                   '_call_id': call_id, '_rendered': render_evidence(admitted)})
             if is_error:
                 tool_errors += 1
                 break
@@ -362,9 +434,6 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         step['tool_calls'] = len(evidence_batch)
         if error:
             break
-        if tool_errors >= MAX_TOOL_ERRORS:
-            error = 'tool error limit reached'
-            break
         if native_requests:
             messages.append(packet['choices'][0]['message'])
         else:
@@ -372,10 +441,10 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         if evidence_batch[-1]['result'] and tool_calls[-1]['is_error']:
             feedback = ('The tool rejected the request. Correct only that request if essential; '
                         'otherwise report the limitation. Tool result:\n' +
-                        json.dumps(evidence_batch[-1], ensure_ascii=False)[:4000])
+                        evidence_batch[-1]['_rendered'][:4000])
         else:
             feedback = ('Validated tool results:\n' +
-                        json.dumps(evidence_batch, ensure_ascii=False)[:24000] +
+                        '\n'.join(row['_rendered'] for row in evidence_batch)[:24000] +
                         '\nAnswer the original task now if this is sufficient. Request only essential '
                         'additional evidence and never repeat a completed call.')
         budget_exhausted = budget.calls >= budget.max_calls
@@ -388,13 +457,19 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             for row in evidence_batch:
                 ident = native_ids[(row['tool'], json.dumps(row['arguments'], sort_keys=True))]
                 messages.append({'role': 'tool', 'tool_call_id': ident,
-                                 'content': json.dumps(row['result'], ensure_ascii=False)[:24000]})
+                                 'content': row['_rendered'][:24000]})
+                recorder.emit('tool.result_delivered', tool_call_id=row['_call_id'], payload={})
             if budget_exhausted:
                 messages.append({'role': 'user', 'content': finalization})
         else:
             if budget_exhausted:
                 feedback += '\n' + finalization
             messages.append({'role': 'user', 'content': feedback})
+            for row in evidence_batch:
+                recorder.emit('tool.result_delivered', tool_call_id=row['_call_id'], payload={})
+        if tool_errors >= MAX_TOOL_ERRORS:
+            error = 'tool error limit reached'
+            break
         if budget_exhausted or step_number >= MAX_MODEL_STEPS - 1:
             tools_enabled = False
     else:
@@ -402,8 +477,17 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
 
     if tool_server and not error and not any(not row['is_error'] for row in tool_calls):
         error = 'model did not execute an allowed tool'
+    if recorder.state.phase == 'running':
+        if error == 'cancelled':
+            recorder.emit('run.cancelled', payload={'reason': error})
+        elif error == 'timeout':
+            recorder.emit('run.timed_out', payload={'reason': error})
+        elif error:
+            recorder.emit('run.failed', payload={'reason': error})
+        else:
+            recorder.emit('run.succeeded', payload={'reason': 'completed'})
     duration = round(time.monotonic() - started, 2)
-    return {'engine': 'big-bertha-project-agent', 'engine_version': 1,
+    return {'engine': 'big-bertha-project-agent', 'engine_version': 2,
             'task_contract_version': CONTRACT_VERSION,
             'route': route, 'model': expected_model, 'tool_profile': tool_profile,
             'limits': {
@@ -425,6 +509,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 'task_timeout_seconds': timeout_s,
             },
             'answer': answer, 'error': error, 'duration_s': duration,
+            'run': recorder.receipt(), 'evidence_provenance': external_provenance,
             'model_steps': len(steps), 'max_model_steps': MAX_MODEL_STEPS,
             'steps': steps, 'tool_calls': len(tool_calls),
             'tool_call_summary': tool_calls, 'tool_budget': budget.receipt(),
@@ -471,7 +556,8 @@ def main() -> int:
                         tool_profile=args.tool_profile, tool_server=server,
                         workspace_root=args.workspace_root, max_tokens=args.max_tokens,
                         timeout_s=args.timeout, max_tool_calls=args.max_tool_calls,
-                        cancel_path=args.out.with_suffix('.cancel'))
+                        cancel_path=args.out.with_suffix('.cancel'),
+                        journal_root=args.out.parent / (args.out.stem + '-journal'))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(receipt, indent=2) + '\n')
     print(json.dumps(receipt, indent=2))

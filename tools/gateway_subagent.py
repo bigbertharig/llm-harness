@@ -280,7 +280,7 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
             tool_server=tool_bridge, workspace_root=workspace_root,
             max_tokens=max_tokens, timeout_s=timeout_s,
             max_tool_calls=max_tool_calls,
-            cancel_path=out.with_suffix('.cancel'))
+            cancel_path=out.with_suffix('.cancel'), journal_root=out / 'journal')
         (out / 'project_agent.json').write_text(json.dumps(project, indent=2) + '\n')
         answer, error = project['answer'], project['error']
         if malformed_child_output(answer):
@@ -301,6 +301,7 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
                    'requested_context_tokens': context_tokens,
                    'requested_worker_strategy': worker_strategy,
                    'engine': project['engine'], 'engine_version': project['engine_version'],
+                   'run': project.get('run'),
                    'task_contract_version': project.get('task_contract_version', 1),
                    'limits': project.get('limits'),
                    'tool_mode': 'project_agent' if tool_profile != 'none' else 'none',

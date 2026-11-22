@@ -13,7 +13,7 @@
       "run.started", "run.succeeded", "run.failed", "run.cancelled", "run.timed_out",
       "model.started", "model.completed", "model.failed", "model.truncated",
       "tool.proposed", "tool.validated", "tool.approved", "tool.executing",
-      "tool.committed", "tool.failed", "tool.result_persisted", "tool.result_delivered",
+      "tool.committed", "tool.failed", "tool.uncertain", "tool.result_persisted", "tool.result_delivered",
       "compaction.started", "compaction.checkpointed", "compaction.committed", "compaction.aborted",
       "retry.scheduled", "retry.started", "retry.exhausted",
       "child.delegated", "child.completed", "child.cancelled",
