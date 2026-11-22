@@ -34,10 +34,21 @@ events and a terminal receipt.
   lifecycle, truncation repair, sequence/link rejection, transport errors, malformed provider
   payloads, and defensive request/response copies. Provider adapters still need to be migrated to
   emit these events before P0b is considered integrated.
-- P0c: append-only journal plus exactly-once tool reconciliation.
+- P0c (built foundation): a private JSONL journal validates the pure reducer under an exclusive
+  process lock and fsyncs every accepted event. Recovery policy resumes validation/approval,
+  permits execution only from the durable `approved` state, and treats `executing` as an uncertain
+  outcome that must be reconciled rather than repeated. Committed results are persisted and then
+  delivered as separate steps. Active adapters still need to adopt the journal and supply
+  tool-specific reconciliation before P0c is considered integrated.
 - P0d: harness-owned complete-document driver and bounded compaction transaction.
 - P1: MCP shape matrix, delayed jobs, queue/steer ordering, and child lifecycle.
 - P2/P3: repeated live reliability, security adversaries, endurance, and pinned external subsets.
 
 No new general-purpose tool enters the active catalog without a named failure class, deterministic
 contract test, receipt fields, permission owner, and rollback/recovery behavior.
+
+The broker must append and fsync `tool.executing` before external dispatch. After that boundary it
+must never infer that a missing response means the action did not happen. A retry requires either a
+connector idempotency key tied to the normalized argument digest or a reconciliation result proving
+the original action absent. `tool.committed` means the external outcome is known and references its
+receipt; it does not mean the result has yet been durably stored or returned to the model.

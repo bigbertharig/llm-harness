@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime
+import re
+from typing import TypeVar
 
 from .contracts import EVENT_SCHEMA_VERSION, EVENT_TYPES
 
@@ -19,13 +21,21 @@ class LinkedState:
 
 
 @dataclass(frozen=True)
+class ToolState(LinkedState):
+    argument_digest: str
+
+
+Linked = TypeVar("Linked", bound=LinkedState)
+
+
+@dataclass(frozen=True)
 class RunState:
     run_id: str
     next_sequence: int = 0
     phase: str = "new"
     active_model_step_id: str | None = None
     completed_model_steps: tuple[str, ...] = ()
-    tools: tuple[LinkedState, ...] = ()
+    tools: tuple[ToolState, ...] = ()
     retry_state: str | None = None
     needs_repair: bool = False
     awaiting_model_followup: bool = False
@@ -51,17 +61,18 @@ _TERMINAL_EVENTS = {
 _EVENT_KEYS = {"schema_version", "event_id", "run_id", "sequence", "type", "occurred_at",
                "conversation_id", "model_step_id", "tool_call_id", "approval_id", "attempt_id",
                "compaction_id", "child_run_id", "payload"}
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
-def _linked(items: tuple[LinkedState, ...], identifier: str) -> tuple[int, LinkedState | None]:
+def _linked(items: tuple[Linked, ...], identifier: str) -> tuple[int, Linked | None]:
     for index, item in enumerate(items):
         if item.identifier == identifier:
             return index, item
     return -1, None
 
 
-def _replace_link(items: tuple[LinkedState, ...], index: int,
-                  replacement: LinkedState) -> tuple[LinkedState, ...]:
+def _replace_link(items: tuple[Linked, ...], index: int,
+                  replacement: Linked) -> tuple[Linked, ...]:
     return items[:index] + (replacement,) + items[index + 1:]
 
 
@@ -159,7 +170,10 @@ def reduce_event(state: RunState, event: dict) -> RunState:
             raise InvalidTransition("tool proposal requires a model tool-call response")
         if _linked(state.tools, call)[1] is not None:
             raise InvalidTransition("tool call identifier was already proposed")
-        updated = replace(state, tools=state.tools + (LinkedState(call, "proposed"),),
+        name, digest = event["payload"].get("name"), event["payload"].get("argument_digest")
+        if not isinstance(name, str) or not name or not isinstance(digest, str) or not _SHA256.fullmatch(digest):
+            raise InvalidTransition("tool proposal requires name and normalized SHA-256 argument digest")
+        updated = replace(state, tools=state.tools + (ToolState(call, "proposed", digest),),
                           tool_cycle_has_proposal=True)
     elif event_type in _TOOL_TRANSITIONS:
         call = _link(event, "tool_call_id")
@@ -167,15 +181,26 @@ def reduce_event(state: RunState, event: dict) -> RunState:
         index, current = _linked(state.tools, call)
         if current is None or current.state != before:
             raise InvalidTransition(f"{event_type} requires tool state {before}")
+        if event_type == "tool.approved":
+            _link(event, "approval_id")
+        if event_type == "tool.committed":
+            digest, receipt = (event["payload"].get("argument_digest"),
+                               event["payload"].get("receipt_ref"))
+            if digest != current.argument_digest or not isinstance(receipt, str) or not receipt:
+                raise InvalidTransition("committed tool outcome requires matching digest and receipt_ref")
+        if event_type == "tool.result_persisted":
+            artifact = event["payload"].get("artifact_ref")
+            if not isinstance(artifact, str) or not artifact:
+                raise InvalidTransition("persisted tool result requires artifact_ref")
         updated = replace(state, tools=_replace_link(
-            state.tools, index, LinkedState(call, after)))
+            state.tools, index, ToolState(call, after, current.argument_digest)))
     elif event_type == "tool.failed":
         call = _link(event, "tool_call_id")
         index, current = _linked(state.tools, call)
         if current is None or current.state not in {"proposed", "validated", "approved", "executing"}:
             raise InvalidTransition("tool.failed requires an uncommitted active tool call")
         updated = replace(state, tools=_replace_link(
-            state.tools, index, LinkedState(call, "failed")))
+            state.tools, index, ToolState(call, "failed", current.argument_digest)))
     elif event_type == "retry.scheduled":
         if not state.needs_repair or state.retry_state not in (None, "attempt_failed"):
             raise InvalidTransition("retry may be scheduled only for a failed or truncated step")

@@ -3,8 +3,11 @@
 from .terminal import TerminalDecision, decide_terminal
 from .contracts import EVENT_SCHEMA_VERSION, EVENT_TYPES, RUN_SCHEMA_VERSION, make_event
 from .fake_provider import ScriptedProvider, ScriptedProviderError
-from .reducer import InvalidTransition, LinkedState, RunState, reduce_event, reduce_events
+from .journal import EventJournal, JournalError
+from .recovery import RecoveryDecision, decide_tool_recovery
+from .reducer import InvalidTransition, LinkedState, RunState, ToolState, reduce_event, reduce_events
 
 __all__ = ["EVENT_SCHEMA_VERSION", "EVENT_TYPES", "RUN_SCHEMA_VERSION", "InvalidTransition",
-           "LinkedState", "RunState", "ScriptedProvider", "ScriptedProviderError",
-           "TerminalDecision", "decide_terminal", "make_event", "reduce_event", "reduce_events"]
+           "EventJournal", "JournalError", "LinkedState", "RecoveryDecision", "RunState", "ToolState",
+           "ScriptedProvider", "ScriptedProviderError", "TerminalDecision", "decide_terminal",
+           "decide_tool_recovery", "make_event", "reduce_event", "reduce_events"]

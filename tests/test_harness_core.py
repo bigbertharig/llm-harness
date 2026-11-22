@@ -3,9 +3,12 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
-from harness_core import (EVENT_SCHEMA_VERSION, EVENT_TYPES, InvalidTransition, RunState,
-                          ScriptedProvider, ScriptedProviderError,
-                          decide_terminal, make_event, reduce_event, reduce_events)
+from harness_core import (EVENT_SCHEMA_VERSION, EVENT_TYPES, EventJournal, InvalidTransition,
+                          JournalError, RunState, ScriptedProvider, ScriptedProviderError,
+                          decide_terminal, decide_tool_recovery, make_event,
+                          reduce_event, reduce_events)
+
+DIGEST = "a" * 64
 
 
 def events(run_id, specifications):
@@ -56,12 +59,14 @@ def test_reducer_accepts_complete_tool_lifecycle_without_mutating_prior_states()
         ("run.started", {}, {}),
         ("model.started", {"model_step_id": "model-1"}, {}),
         ("model.completed", {"model_step_id": "model-1"}, {"finish_reason": "tool_calls"}),
-        ("tool.proposed", {"tool_call_id": "tool-1"}, {"name": "read_file"}),
+        ("tool.proposed", {"tool_call_id": "tool-1"},
+         {"name": "read_file", "argument_digest": DIGEST}),
         ("tool.validated", {"tool_call_id": "tool-1"}, {}),
         ("tool.approved", {"tool_call_id": "tool-1", "approval_id": "approval-1"}, {}),
         ("tool.executing", {"tool_call_id": "tool-1"}, {}),
-        ("tool.committed", {"tool_call_id": "tool-1"}, {"argument_digest": "abc"}),
-        ("tool.result_persisted", {"tool_call_id": "tool-1"}, {"artifact": "result-1"}),
+        ("tool.committed", {"tool_call_id": "tool-1"},
+         {"argument_digest": DIGEST, "receipt_ref": "receipt-1"}),
+        ("tool.result_persisted", {"tool_call_id": "tool-1"}, {"artifact_ref": "result-1"}),
         ("tool.result_delivered", {"tool_call_id": "tool-1"}, {}),
         ("model.started", {"model_step_id": "model-2"}, {}),
         ("model.completed", {"model_step_id": "model-2"}, {"finish_reason": "stop"}),
@@ -159,3 +164,94 @@ def test_scripted_provider_replays_payload_errors_and_malformed_shapes_exactly()
         assert "unexpected request" in str(exc)
     else:
         raise AssertionError("extra provider request was accepted")
+
+
+def test_event_journal_fsyncs_validated_records_and_replays_state(tmp_path):
+    journal = EventJournal(tmp_path / "journal", "run-persisted")
+    empty_events, empty_state = journal.read()
+    assert empty_events == [] and empty_state.phase == "new" and not journal.path.exists()
+    records = events("run-persisted", [
+        ("run.started", {}, {}),
+        ("model.started", {"model_step_id": "model-1"}, {}),
+        ("model.completed", {"model_step_id": "model-1"}, {"finish_reason": "stop"}),
+        ("run.succeeded", {}, {"reason": "completed"}),
+    ])
+    for record in records:
+        state = journal.append(record)
+    saved, replayed = EventJournal(tmp_path / "journal", "run-persisted").read()
+    assert saved == records
+    assert state == replayed and replayed.phase == "succeeded"
+    assert journal.path.stat().st_mode & 0o777 == 0o600
+    assert journal.root.stat().st_mode & 0o777 == 0o700
+
+
+def test_event_journal_refuses_invalid_append_corrupt_tail_and_symlink(tmp_path):
+    journal = EventJournal(tmp_path / "journal", "run-guarded")
+    started = make_event(run_id="run-guarded", sequence=0, event_type="run.started")
+    journal.append(started)
+    before = journal.path.read_bytes()
+    try:
+        journal.append(make_event(run_id="run-guarded", sequence=2,
+                                  event_type="input.queued"))
+    except JournalError as exc:
+        assert "expected event sequence 1" in str(exc)
+    else:
+        raise AssertionError("out-of-order journal append was accepted")
+    assert journal.path.read_bytes() == before
+    with journal.path.open("ab") as target:
+        target.write(b'{"partial":')
+    try:
+        journal.read()
+    except JournalError as exc:
+        assert "incomplete final record" in str(exc)
+    else:
+        raise AssertionError("partial journal tail was ignored")
+
+    real_root = tmp_path / "real"
+    real_root.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(real_root, target_is_directory=True)
+    try:
+        EventJournal(alias, "run-link")
+    except JournalError as exc:
+        assert "symlink" in str(exc)
+    else:
+        raise AssertionError("symlinked journal root was accepted")
+
+
+def test_tool_recovery_never_repeats_a_possibly_dispatched_call():
+    run_id = "run-recovery"
+    journal = events(run_id, [
+        ("run.started", {}, {}),
+        ("model.started", {"model_step_id": "model-1"}, {}),
+        ("model.completed", {"model_step_id": "model-1"}, {"finish_reason": "tool_calls"}),
+        ("tool.proposed", {"tool_call_id": "write-1"},
+         {"name": "send_message", "argument_digest": DIGEST}),
+        ("tool.validated", {"tool_call_id": "write-1"}, {}),
+        ("tool.approved", {"tool_call_id": "write-1", "approval_id": "approval-1"}, {}),
+        ("tool.executing", {"tool_call_id": "write-1"}, {}),
+        ("tool.committed", {"tool_call_id": "write-1"},
+         {"argument_digest": DIGEST, "receipt_ref": "receipt-1"}),
+        ("tool.result_persisted", {"tool_call_id": "write-1"}, {"artifact_ref": "result-1"}),
+        ("tool.result_delivered", {"tool_call_id": "write-1"}, {}),
+    ])
+    expected = {
+        3: "validate", 4: "approve", 5: "execute", 6: "reconcile",
+        7: "persist_result", 8: "deliver_result", 9: "done",
+    }
+    state = RunState(run_id)
+    for index, event in enumerate(journal):
+        state = reduce_event(state, event)
+        if index in expected:
+            decision = decide_tool_recovery(state, "write-1")
+            assert decision.action == expected[index] and decision.argument_digest == DIGEST
+        if index == 6:
+            mismatched = {**journal[7], "payload": {
+                **journal[7]["payload"], "argument_digest": "b" * 64}}
+            try:
+                reduce_event(state, mismatched)
+            except InvalidTransition as exc:
+                assert "matching digest" in str(exc)
+            else:
+                raise AssertionError("changed arguments reused a committed tool call identity")
+    assert decide_tool_recovery(state, "missing").action == "fail"
