@@ -10,10 +10,12 @@ from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 
+from harness_core.profiles import get_tool_profile
+
 MAX_TOOL_CALLS = 12
 MAX_TOOL_BATCH_CALLS = 4
 MAX_TOOL_RESULT_BYTES = 32_000
-MAX_TOTAL_TOOL_BYTES = 80_000
+MAX_TOTAL_TOOL_BYTES = 160_000
 MAX_ACTIVE_CHILDREN = 2
 MAX_MODEL_STEPS = 6
 MAX_TOOL_ERRORS = 2
@@ -22,22 +24,8 @@ SENSITIVE_QUERY = re.compile(r'(?i)(?:api[_-]?key|access[_-]?token|password|secr
 
 
 def validate_request(profile: str, tool: str, arguments: dict, workspace_root: Path | None) -> None:
-    allowed = {'public_research': {'search_web', 'fetch_page'},
-               'workspace_read': {'list_workspace_files', 'find_workspace_files',
-                                  'read_workspace_file', 'read_workspace_document_chunk',
-                                  'search_workspace_text'},
-               'workspace_git': {'get_workspace_git_status', 'get_workspace_git_log',
-                                 'get_workspace_git_diff', 'get_workspace_git_commit',
-                                 'compare_workspace_git_revisions',
-                                 'read_workspace_file_at_revision',
-                                 'get_workspace_file_history'},
-               'google_workspace': {'search_mail', 'read_mail', 'send_email',
-                                    'search_drive', 'read_drive_text', 'create_drive_folder',
-                                    'upload_drive_text', 'upload_drive_image', 'create_google_doc',
-                                    'append_google_doc_text', 'create_google_sheet',
-                                    'read_google_sheet', 'update_google_sheet',
-                                    'append_google_sheet_rows'}}
-    if tool not in allowed.get(profile, set()) or not isinstance(arguments, dict):
+    contract = get_tool_profile(profile)
+    if tool not in contract.tools or not isinstance(arguments, dict):
         raise ValueError('child tool is outside its selected profile')
     if profile == 'public_research':
         query = arguments.get('query') if tool == 'search_web' else arguments.get('url')

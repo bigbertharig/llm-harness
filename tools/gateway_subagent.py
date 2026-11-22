@@ -20,6 +20,7 @@ from ready_roster import fetch_ready_roster
 from codex_child import run_codex_child
 from child_public_tools import discover_tools
 from child_policy import guard_child_run
+from harness_core import get_tool_profile
 from project_agent import run_agent as run_project_agent
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,13 +50,16 @@ def _validate_child_tools(tool_profile: str, workspace_root: Path | None = None)
         return
     if tool_profile not in ('public_research', 'workspace_read', 'workspace_git', 'google_workspace'):
         raise ValueError('unknown child tool profile')
+    contract = get_tool_profile(tool_profile)
+    if contract.requires_workspace and workspace_root is None:
+        raise ValueError(f'{tool_profile} requires a selected workspace root')
     registry = json.loads(TOOL_REGISTRY.read_text())
     if tool_profile == 'public_research':
         server_name = 'rig_search'
         names = ('search_web', 'fetch_page')
         surface = registry['surfaces'][server_name]
         approved = {row['name'] for row in surface['tools'] if row.get('approval') == 'automatic'}
-        if surface.get('status') != 'dashboard' or not set(names) <= approved:
+        if surface.get('status') != 'dashboard' or approved != contract.tools:
             raise ValueError('public research tools are not approved in the harness catalog')
         env_file = Path(os.environ.get('RIG_SEARCH_ENV_FILE') or ROOT / '.env').resolve()
         if not SEARCH_SERVER.is_file() or not env_file.is_file():
@@ -65,7 +69,7 @@ def _validate_child_tools(tool_profile: str, workspace_root: Path | None = None)
                  'read_workspace_document_chunk', 'search_workspace_text')
         surface = registry['surfaces']['workspace_read']
         approved = {row['name'] for row in surface['tools'] if row.get('approval') == 'automatic'}
-        if (surface.get('status') != 'dashboard' or approved != set(names) or
+        if (surface.get('status') != 'dashboard' or approved != contract.tools or
                 workspace_root is None or not workspace_root.is_dir() or
                 not WORKSPACE_SERVER.is_file()):
             raise ValueError('workspace read tools or selected root are unavailable')
@@ -76,14 +80,15 @@ def _validate_child_tools(tool_profile: str, workspace_root: Path | None = None)
                  'get_workspace_file_history')
         surface = registry['surfaces']['workspace_git']
         approved = {row['name'] for row in surface['tools'] if row.get('approval') == 'automatic'}
-        if (surface.get('status') != 'dashboard' or approved != set(names) or
+        if (surface.get('status') != 'dashboard' or approved != contract.tools or
                 workspace_root is None or not workspace_root.is_dir() or
                 not WORKSPACE_GIT_SERVER.is_file()):
             raise ValueError('workspace Git tools or selected root are unavailable')
     else:
         surface = registry['surfaces']['google_workspace']
         approved = {row['name'] for row in surface['tools'] if row.get('approval') == 'automatic'}
-        if surface.get('status') != 'dashboard' or not approved or not GOOGLE_SERVER.is_file():
+        if (surface.get('status') != 'dashboard' or not approved
+                or not approved <= contract.tools or not GOOGLE_SERVER.is_file()):
             raise ValueError('Google Workspace tools are not approved or unavailable')
 
 

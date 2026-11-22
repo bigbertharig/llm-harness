@@ -14,7 +14,8 @@ from urllib.request import Request, urlopen
 
 from child_policy import (MAX_MODEL_STEPS, MAX_TOOL_BATCH_CALLS, MAX_TOOL_ERRORS,
                           ToolBudget, validate_request)
-from harness_core import RunRecorder, admit_evidence, decide_terminal, prepare_evidence, render_evidence
+from harness_core import (DocumentDriverError, RunRecorder, admit_evidence, decide_terminal,
+                          get_tool_profile, next_document_request, prepare_evidence, render_evidence)
 from child_public_tools import call_tool, parse_requests
 from child_public_tools import MAX_MCP_LINE_CHARS
 from ready_roster import fetch_ready_roster
@@ -217,7 +218,10 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             raise ValueError('tool-free run cannot have a tool server')
     elif not isinstance(tool_server, dict) or not tool_server.get('tools'):
         raise ValueError('tool profile requires an allowlisted tool server')
-    if tool_profile in ('workspace_read', 'workspace_git'):
+    profile_contract = get_tool_profile(tool_profile) if tool_profile != 'none' else None
+    if profile_contract and set(tool_server['tools']) - profile_contract.tools:
+        raise ValueError('tool server exceeds the selected profile')
+    if profile_contract and profile_contract.requires_workspace:
         if workspace_root is None:
             raise ValueError(f'{tool_profile} requires a workspace root')
         workspace_root = workspace_root.resolve(strict=True)
@@ -336,7 +340,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         for name, arguments in requests:
             fingerprint = json.dumps((name, arguments), sort_keys=True)
             if fingerprint not in attempted:
-                pending.append((name, arguments, fingerprint))
+                pending.append((name, arguments, fingerprint,
+                                native_ids.get((name, json.dumps(arguments, sort_keys=True)))))
         if requests and not pending:
             for request_index, (name, arguments) in enumerate(requests, 1):
                 call_id = (native_ids.get((name, json.dumps(arguments, sort_keys=True)))
@@ -373,10 +378,13 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             continue
 
         evidence_batch = []
-        for request_index, (name, arguments, fingerprint) in enumerate(pending, 1):
+        post_delivery_error = None
+        for request_index, (name, arguments, fingerprint, delivery_id) in enumerate(pending, 1):
             attempted.add(fingerprint)
-            call_id = (native_ids.get((name, json.dumps(arguments, sort_keys=True)))
-                       or f'tool-{step_number}-{request_index}')
+            candidate_id = delivery_id
+            call_id = (candidate_id if candidate_id and not any(
+                row.identifier == candidate_id for row in recorder.state.tools)
+                else f'tool-{step_number}-{request_index}')
             argument_digest = digest_request(name, arguments)
             recorder.emit('tool.proposed', tool_call_id=call_id,
                           payload={'name': name, 'argument_digest': argument_digest})
@@ -421,14 +429,28 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                             'detail': f'{type(exc).__name__}: {exc}'}
             tool_calls.append({'tool': name, 'arguments': arguments, 'is_error': is_error,
                                'evidence': _evidence_metadata(name, evidence)})
-            admitted = admit_evidence({'source': 'tool_result',
+            admitted = admit_evidence({'source': profile_contract.evidence_source,
                                        'origin': f'{tool_server["name"]}/{name}/{call_id}',
                                        'content': evidence})
+            tool_calls[-1]['provenance'] = admitted.metadata()
             evidence_batch.append({'tool': name, 'arguments': arguments, 'result': evidence,
-                                   '_call_id': call_id, '_rendered': render_evidence(admitted)})
+                                   '_call_id': call_id, '_delivery_id': delivery_id,
+                                   '_rendered': render_evidence(admitted)})
             if is_error:
                 tool_errors += 1
                 break
+            try:
+                followup = next_document_request(name, arguments, evidence,
+                                                 budget.calls, budget.max_calls)
+            except DocumentDriverError as exc:
+                post_delivery_error = str(exc)
+                break
+            if followup is not None:
+                followup_fingerprint = json.dumps((name, followup), sort_keys=True)
+                if followup_fingerprint in attempted:
+                    post_delivery_error = 'complete-document driver made no cursor progress'
+                    break
+                pending.append((name, followup, followup_fingerprint, delivery_id))
             if budget.calls >= budget.max_calls:
                 break
         step['tool_calls'] = len(evidence_batch)
@@ -444,7 +466,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                         evidence_batch[-1]['_rendered'][:4000])
         else:
             feedback = ('Validated tool results:\n' +
-                        '\n'.join(row['_rendered'] for row in evidence_batch)[:24000] +
+                        '\n'.join(row['_rendered'] for row in evidence_batch)[:160000] +
                         '\nAnswer the original task now if this is sufficient. Request only essential '
                         'additional evidence and never repeat a completed call.')
         budget_exhausted = budget.calls >= budget.max_calls
@@ -454,10 +476,13 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         if native_requests:
             # Shared Gateway routes currently normalize exactly one proposal;
             # general routes may return a bounded batch. Preserve each call ID.
+            delivery_groups = {}
             for row in evidence_batch:
-                ident = native_ids[(row['tool'], json.dumps(row['arguments'], sort_keys=True))]
+                delivery_groups.setdefault(row['_delivery_id'] or row['_call_id'], []).append(row)
+            for ident, rows in delivery_groups.items():
                 messages.append({'role': 'tool', 'tool_call_id': ident,
-                                 'content': row['_rendered'][:24000]})
+                                 'content': '\n'.join(row['_rendered'] for row in rows)[:160000]})
+            for row in evidence_batch:
                 recorder.emit('tool.result_delivered', tool_call_id=row['_call_id'], payload={})
             if budget_exhausted:
                 messages.append({'role': 'user', 'content': finalization})
@@ -469,6 +494,9 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 recorder.emit('tool.result_delivered', tool_call_id=row['_call_id'], payload={})
         if tool_errors >= MAX_TOOL_ERRORS:
             error = 'tool error limit reached'
+            break
+        if post_delivery_error:
+            error = post_delivery_error
             break
         if budget_exhausted or step_number >= MAX_MODEL_STEPS - 1:
             tools_enabled = False

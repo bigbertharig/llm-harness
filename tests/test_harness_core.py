@@ -4,9 +4,9 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 from harness_core import (EVENT_SCHEMA_VERSION, EVENT_TYPES, EventJournal, InvalidTransition,
-                          JournalError, RunState, ScriptedProvider, ScriptedProviderError,
+                          DocumentDriverError, JournalError, RunState, ScriptedProvider, ScriptedProviderError,
                           RunRecorder, admit_evidence, decide_terminal, decide_tool_recovery, make_event,
-                          prepare_evidence, render_evidence,
+                          get_tool_profile, next_document_request, prepare_evidence, render_evidence,
                           reduce_event, reduce_events)
 
 DIGEST = "a" * 64
@@ -307,3 +307,34 @@ def test_recorder_persists_private_tool_artifact_and_replays_terminal_run(tmp_pa
     assert artifact.stat().st_mode & 0o777 == 0o600
     saved, replayed = EventJournal(tmp_path / "journal", "run-artifact").read()
     assert len(saved) == recorder.receipt()["event_count"] and replayed.phase == "succeeded"
+
+
+def test_tool_profiles_keep_capabilities_and_evidence_authority_separate():
+    read = get_tool_profile("workspace_read")
+    git = get_tool_profile("workspace_git")
+    web = get_tool_profile("public_research")
+    assert read.requires_workspace and git.requires_workspace and not web.requires_workspace
+    assert read.evidence_source == git.evidence_source == "repository"
+    assert web.evidence_source == "web_page"
+    assert not (read.tools & git.tools) and not (git.tools & web.tools)
+    assert not read.permits_writes and not git.permits_writes and not web.permits_writes
+
+
+def test_complete_document_driver_advances_exact_snapshot_or_fails_closed():
+    arguments = {"path": "report.md", "cursor": 0, "max_chars": 12000}
+    evidence = {"path": "report.md", "cursor_start": 0, "cursor_end": 12000,
+                "next_cursor": 12000, "snapshot_sha256": "a" * 64, "complete": False}
+    assert next_document_request("read_workspace_document_chunk", arguments, evidence, 1, 4) == {
+        "path": "report.md", "cursor": 12000, "snapshot_sha256": "a" * 64,
+        "max_chars": 12000}
+    assert next_document_request("read_workspace_document_chunk", arguments,
+                                 {**evidence, "complete": True}, 1, 4) is None
+    assert next_document_request("read_workspace_document_chunk", arguments,
+                                 evidence, 4, 4) is None
+    try:
+        next_document_request("read_workspace_document_chunk", arguments,
+                              {**evidence, "next_cursor": 11999}, 1, 4)
+    except DocumentDriverError as exc:
+        assert "invalid" in str(exc)
+    else:
+        raise AssertionError("a skipped document cursor was accepted")

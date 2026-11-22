@@ -49,7 +49,9 @@ events and a terminal receipt.
   source types, origins, content digests, and system-owned trust. Receipts retain provenance without
   copying content. Allowlist validation and approvals remain the authority boundary; prompt labels
   are defense in depth, not the security mechanism.
-- P0d: harness-owned complete-document driver and bounded compaction transaction.
+- P0d (document driver integrated): a model selects targeted reading or requests a complete read
+  with cursor zero. The Harness then advances every cursor mechanically, pins the snapshot digest,
+  journals each chunk, and reports exact contiguous coverage. Bounded compaction transactions remain.
 - P1: MCP shape matrix, delayed jobs, queue/steer ordering, and child lifecycle.
 - P2/P3: repeated live reliability, security adversaries, endurance, and pinned external subsets.
 

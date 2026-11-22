@@ -119,7 +119,65 @@ class ProjectAgentTests(unittest.TestCase):
                 tool_server=server, workspace_root=Path(temp), complete=lambda *_: next(replies))
         self.assertIsNone(result['error'])
         self.assertEqual(result['tool_call_summary'][0]['tool'], 'get_workspace_git_log')
+        self.assertEqual(result['tool_call_summary'][0]['provenance']['source'], 'repository')
         self.assertEqual(result['answer'], 'The latest two commits are A and B.')
+
+    def test_complete_document_driver_follows_every_cursor_without_model_round_trips(self):
+        request = json.dumps({'name': 'mcp__workspace_read__read_workspace_document_chunk',
+                              'arguments': {'path': 'report.md', 'cursor': 0, 'max_chars': 12000}})
+        replies = iter([packet(request), packet('Read the complete report.')])
+        snapshot = 'a' * 64
+        chunks = {
+            0: {'cursor_end': 12000, 'next_cursor': 12000, 'complete': False, 'content': 'a' * 12000},
+            12000: {'cursor_end': 24000, 'next_cursor': 24000, 'complete': False, 'content': 'b' * 12000},
+            24000: {'cursor_end': 36000, 'next_cursor': None, 'complete': True, 'content': 'c' * 12000},
+        }
+        calls = []
+        def tool(_server, _name, arguments, timeout):
+            calls.append(dict(arguments))
+            row = chunks[arguments.get('cursor', 0)]
+            return {'isError': False, 'structuredContent': {
+                'path': 'report.md', 'snapshot_sha256': snapshot,
+                'total_bytes': 36000, 'total_characters': 36000,
+                'cursor_start': arguments.get('cursor', 0), **row}}
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_document_chunk'],
+                  'definitions': [{'name': 'read_workspace_document_chunk', 'description': 'Read all',
+                                   'inputSchema': {'type': 'object'}}], 'command': ['fixture']}
+        seen = []
+        def complete(_gateway, _route, messages, _max_tokens, _timeout, _key, _tools):
+            seen.append(list(messages)); return next(replies)
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool', side_effect=tool):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='read all of report.md', agent_type='research',
+                tool_profile='workspace_read', tool_server=server,
+                workspace_root=Path(temp), max_tool_calls=4, complete=complete)
+        self.assertEqual([row['cursor'] for row in calls], [0, 12000, 24000])
+        self.assertEqual(result['tool_calls'], 3)
+        self.assertTrue(result['document_evidence_coverage'][0]['complete_document'])
+        self.assertEqual(result['tool_call_summary'][0]['provenance']['source'], 'repository')
+        self.assertEqual(result['model_steps'], 2)
+        self.assertEqual(seen[1][-1]['content'].count('EXTERNAL EVIDENCE'), 3)
+        self.assertIn('c' * 1000, seen[1][-1]['content'])
+
+    def test_public_research_results_are_typed_as_untrusted_web_evidence(self):
+        request = json.dumps({'name': 'mcp__rig_search__search_web',
+                              'arguments': {'query': 'primary source'}})
+        replies = iter([packet(request), packet('Research result.')])
+        server = {'name': 'rig_search', 'tools': ['search_web'],
+                  'definitions': [{'name': 'search_web', 'description': 'Search',
+                                   'inputSchema': {'type': 'object'}}], 'command': ['fixture']}
+        with patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool', return_value={
+                 'isError': False, 'structuredContent': {'results': [{'url': 'https://example.test'}]}}):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='research', agent_type='research', tool_profile='public_research',
+                tool_server=server, complete=lambda *_: next(replies))
+        self.assertEqual(result['tool_call_summary'][0]['provenance']['source'], 'web_page')
+        self.assertEqual(result['tool_call_summary'][0]['provenance']['trust'], 'untrusted_evidence')
 
     def test_tool_free_answer_uses_project_engine_and_ready_output_limit(self):
         seen = []

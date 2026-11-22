@@ -336,6 +336,7 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertIsNone(receipt['error'])
         self.assertEqual(run.call_args.kwargs['tool_server']['tools'], ['search_web', 'fetch_page'])
         self.assertEqual(len(run.call_args.kwargs['tool_server']['definitions']), 2)
+        self.assertEqual(run.call_args.kwargs['journal_root'], Path(temp) / 'child' / 'journal')
 
     def test_ephemeral_child_is_released_when_post_attach_roster_fails(self):
         parent = {'id': 'gpu-rig/shared-35b-main', 'model': 'qwen3.6:35b-a3b-xl',
