@@ -52,11 +52,13 @@ class ProjectAgentTests(unittest.TestCase):
             for line in (1, 50)]
         replies = iter([packet(calls[0]), packet(calls[1]), packet('Enough evidence.')])
         advertised = []
+        seen = []
         server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
                   'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
                                    'inputSchema': {'type': 'object'}}], 'command': ['fixture']}
-        def complete(_gateway, _route, _messages, _max_tokens, _timeout, _key, tools):
+        def complete(_gateway, _route, messages, _max_tokens, _timeout, _key, tools):
             advertised.append(tools)
+            seen.append(list(messages))
             return next(replies)
         with tempfile.TemporaryDirectory() as temp, \
              patch('project_agent.fetch_ready_roster', return_value=READY), \
@@ -71,6 +73,7 @@ class ProjectAgentTests(unittest.TestCase):
         self.assertEqual(result['tool_calls'], 2)
         self.assertEqual(result['tool_budget']['max_calls'], 2)
         self.assertEqual(advertised[-1], [])
+        self.assertIn('TOOL BUDGET EXHAUSTED', seen[-1][-1]['content'])
 
     def test_tool_budget_counts_normalized_evidence_once(self):
         request = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',

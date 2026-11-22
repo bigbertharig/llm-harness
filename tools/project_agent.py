@@ -370,6 +370,10 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                         json.dumps(evidence_batch, ensure_ascii=False)[:24000] +
                         '\nAnswer the original task now if this is sufficient. Request only essential '
                         'additional evidence and never repeat a completed call.')
+        budget_exhausted = budget.calls >= budget.max_calls
+        finalization = ('TOOL BUDGET EXHAUSTED: Do not request another tool. Use the evidence already '
+                        'returned and produce the final answer now. If it is insufficient, state the '
+                        'specific limitation instead of requesting more evidence.')
         if native_requests:
             # Shared Gateway routes currently normalize exactly one proposal;
             # general routes may return a bounded batch. Preserve each call ID.
@@ -377,9 +381,13 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 ident = native_ids[(row['tool'], json.dumps(row['arguments'], sort_keys=True))]
                 messages.append({'role': 'tool', 'tool_call_id': ident,
                                  'content': json.dumps(row['result'], ensure_ascii=False)[:24000]})
+            if budget_exhausted:
+                messages.append({'role': 'user', 'content': finalization})
         else:
+            if budget_exhausted:
+                feedback += '\n' + finalization
             messages.append({'role': 'user', 'content': feedback})
-        if budget.calls >= budget.max_calls or step_number >= MAX_MODEL_STEPS - 1:
+        if budget_exhausted or step_number >= MAX_MODEL_STEPS - 1:
             tools_enabled = False
     else:
         error = 'model step limit reached'
