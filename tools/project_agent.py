@@ -334,12 +334,15 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 validate_request(tool_profile, name, arguments, workspace_root)
                 result = call_tool(tool_server, name, arguments,
                                    timeout=min(45, max(1, remaining - 5)))
-                budget.record(result)
+                evidence = result.get('structuredContent') or result.get('content') or result
+                # MCP commonly mirrors structuredContent as serialized text in
+                # content. Charge the normalized evidence delivered to the model
+                # once, rather than charging both transport representations.
+                budget.record(evidence)
             except Exception as exc:
                 error = f'tool call failed: {type(exc).__name__}: {exc}'
                 break
             is_error = bool(result.get('isError'))
-            evidence = result.get('structuredContent') or result.get('content') or result
             tool_calls.append({'tool': name, 'arguments': arguments, 'is_error': is_error,
                                'evidence': _evidence_metadata(name, evidence)})
             evidence_batch.append({'tool': name, 'arguments': arguments, 'result': evidence})

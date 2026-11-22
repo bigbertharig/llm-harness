@@ -72,6 +72,30 @@ class ProjectAgentTests(unittest.TestCase):
         self.assertEqual(result['tool_budget']['max_calls'], 2)
         self.assertEqual(advertised[-1], [])
 
+    def test_tool_budget_counts_normalized_evidence_once(self):
+        request = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
+                              'arguments': {'path': 'README.md'}})
+        replies = iter([packet(request), packet('Evidence read.')])
+        evidence = {'path': 'README.md', 'content': 'x' * 1000}
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
+                  'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
+                                   'inputSchema': {'type': 'object'}}],
+                  'command': ['fixture']}
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool', return_value={
+                 'isError': False,
+                 'content': [{'type': 'text', 'text': json.dumps(evidence)}],
+                 'structuredContent': evidence}):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='inspect', agent_type='research', tool_profile='workspace_read',
+                tool_server=server, workspace_root=Path(temp), complete=lambda *_: next(replies))
+
+        expected = len(json.dumps(evidence, ensure_ascii=False).encode('utf-8'))
+        self.assertEqual(result['tool_budget']['result_bytes'], expected)
+        self.assertIsNone(result['error'])
+
     def test_workspace_git_prompt_and_policy_stay_separate_from_file_reads(self):
         server = {'name': 'workspace_git', 'tools': ['get_workspace_git_log'],
                   'definitions': [{'name': 'get_workspace_git_log', 'description': 'Log',
