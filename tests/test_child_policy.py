@@ -37,8 +37,11 @@ class ChildPolicyTests(unittest.TestCase):
             budget.record({'content': [{'text': 'ok'}]})
         with self.assertRaises(ValueError):
             budget.before_call()
+        oversized = ToolBudget()
         with self.assertRaises(ValueError):
-            ToolBudget().record({'content': 'x' * 33_000})
+            oversized.record({'content': 'x' * 33_000})
+        self.assertEqual(oversized.receipt()['calls'], 1)
+        self.assertEqual(oversized.receipt()['result_bytes'], 0)
         self.assertEqual(budget.receipt()['calls'], 12)
 
     def test_task_specific_tool_call_budget(self):

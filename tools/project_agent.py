@@ -14,8 +14,9 @@ from urllib.request import Request, urlopen
 
 from child_policy import (MAX_MODEL_STEPS, MAX_TOOL_BATCH_CALLS, MAX_TOOL_ERRORS,
                           ToolBudget, validate_request)
-from harness_core import (DocumentDriverError, RunRecorder, admit_evidence, decide_terminal,
-                          get_tool_profile, next_document_request, prepare_evidence, render_evidence)
+from harness_core import (DocumentDriverError, MCPResultError, RunRecorder, admit_evidence,
+                          decide_terminal, get_tool_profile, next_document_request,
+                          normalize_mcp_result, prepare_evidence, render_evidence)
 from child_public_tools import call_tool, parse_requests
 from child_public_tools import MAX_MCP_LINE_CHARS
 from ready_roster import fetch_ready_roster
@@ -409,15 +410,25 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 recorder.emit('tool.uncertain', tool_call_id=call_id,
                               payload={'reason': type(exc).__name__})
                 break
-            evidence = result.get('structuredContent') or result.get('content') or result
             receipt_ref = f'mcp:{tool_server["name"]}:{call_id}'
             recorder.emit('tool.committed', tool_call_id=call_id,
                           payload={'argument_digest': argument_digest,
                                    'receipt_ref': receipt_ref})
+            try:
+                normalized = normalize_mcp_result(result)
+                evidence = normalized.evidence
+                driver_evidence = normalized.driver_evidence
+                result_shape = normalized.shape
+                is_error = normalized.is_error
+            except MCPResultError as exc:
+                evidence = driver_evidence = {
+                    'harness_error': 'tool returned an invalid MCP result',
+                    'detail': str(exc)}
+                result_shape = 'invalid'
+                is_error = True
             artifact_ref = recorder.persist_result(call_id, evidence)
             recorder.emit('tool.result_persisted', tool_call_id=call_id,
                           payload={'artifact_ref': artifact_ref})
-            is_error = bool(result.get('isError'))
             try:
                 # MCP commonly mirrors structuredContent as serialized text in
                 # content. Charge the normalized evidence delivered to the model
@@ -428,7 +439,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 evidence = {'harness_error': 'tool result exceeded the evidence budget',
                             'detail': f'{type(exc).__name__}: {exc}'}
             tool_calls.append({'tool': name, 'arguments': arguments, 'is_error': is_error,
-                               'evidence': _evidence_metadata(name, evidence)})
+                               'result_shape': result_shape,
+                               'evidence': _evidence_metadata(name, driver_evidence)})
             admitted = admit_evidence({'source': profile_contract.evidence_source,
                                        'origin': f'{tool_server["name"]}/{name}/{call_id}',
                                        'content': evidence})
@@ -440,7 +452,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 tool_errors += 1
                 break
             try:
-                followup = next_document_request(name, arguments, evidence,
+                followup = next_document_request(name, arguments, driver_evidence,
                                                  budget.calls, budget.max_calls)
             except DocumentDriverError as exc:
                 post_delivery_error = str(exc)

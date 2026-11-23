@@ -18,7 +18,7 @@ deadline is not a model-server timeout.
 | Model steps | 6 | completion calls, project agent |
 | Tool calls | 12 ceiling, lowerable per task | executed calls, project agent |
 | Compatibility batch | 4 | parsed proposals per turn; preferred prompt path is one call |
-| Tool result / total evidence | 32,000 / 80,000 | UTF-8 JSON bytes, child policy |
+| Tool result / total evidence | 32,000 / 160,000 | UTF-8 JSON bytes, child policy |
 | MCP response line | 131,072 | Python characters read by the text-mode stdio bridge |
 | Child task deadline | 600 maximum | wall-clock seconds, project agent |
 | One dispatched tool | 45 maximum inside the remaining task deadline | wall-clock seconds |
@@ -68,14 +68,27 @@ deadline. Never infer a server limit solely from a client-side rejection.
 - A correct final answer does not erase a failed tool call, truncated output,
   incomplete compaction, fabricated evidence, or leaked reservation.
 
-## Next ports
+## Current framework status
+
+The project engine now uses the canonical event reducer, append-only journal, terminal policy,
+fail-closed tool recovery decisions, provenance envelopes, centralized tool profiles, and the
+deterministic complete-document cursor driver. Workspace reads, Git reads, and public research are
+separate grants and evidence sources. These are integrated runtime paths, not only proposed ports.
+
+P1 begins with canonical MCP result normalization. Text-only, structured-only, mirrored mixed,
+distinct mixed, explicit error, empty, malformed, and oversized replies have deterministic outcomes.
+The model sees one normalized evidence value; mechanical drivers retain the structured view; receipts
+record the observed result shape. Dispatched calls count against the tool budget even when their
+result is malformed or oversized.
+
+## Remaining ports
 
 1. Add durable compaction transactions and a blind corrected-facts suite to the
    project-owned session layer before choosing a summary policy.
 2. Add boundary probes for route output, task/request size, MCP line size, tool
    result bytes, total evidence bytes, and client-versus-server timeout behavior.
-3. Normalize completion, tool, retry, compaction, cancellation, and recovery
-   events into a versioned event log suitable for dashboard replay.
+3. Finish bounded compaction transactions in the active session layer and expose the existing
+   versioned event log to dashboard receipts.
 4. Add typed retry classification so authorization, schema, capacity, and
    not-ready refusals are not retried as transient transport failures.
 

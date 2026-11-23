@@ -15,8 +15,13 @@ The complete-read cursor is a decoded Unicode character offset. `total_bytes` an
 file fails its snapshot check. A nonzero cursor without the snapshot hash fails immediately.
 
 The current delegated agent remains bounded to six model steps, twelve tool calls, 32 KB per tool
-result, and 80 KB total tool evidence. Therefore this primitive proves full coverage only when the
+result, and 160 KB total tool evidence. Therefore this primitive proves full coverage only when the
 document fits those limits. It must not be described as an unlimited-document reader.
+
+For the current driver, one model request at cursor zero is sufficient. Harness follows each returned
+cursor without another model decision, pins the first snapshot digest, journals all chunks, and gives
+the model the normalized evidence once. Larger-than-budget documents still require the durable
+map/reduce driver described below; increasing a prompt or MCP line limit is not a substitute.
 
 ## Large-document driver
 

@@ -4,9 +4,10 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 from harness_core import (EVENT_SCHEMA_VERSION, EVENT_TYPES, EventJournal, InvalidTransition,
-                          DocumentDriverError, JournalError, RunState, ScriptedProvider, ScriptedProviderError,
+                          DocumentDriverError, JournalError, MCPResultError, RunState, ScriptedProvider, ScriptedProviderError,
                           RunRecorder, admit_evidence, decide_terminal, decide_tool_recovery, make_event,
-                          get_tool_profile, next_document_request, prepare_evidence, render_evidence,
+                          get_tool_profile, next_document_request, normalize_mcp_result,
+                          prepare_evidence, render_evidence,
                           reduce_event, reduce_events)
 
 DIGEST = "a" * 64
@@ -338,3 +339,42 @@ def test_complete_document_driver_advances_exact_snapshot_or_fails_closed():
         assert "invalid" in str(exc)
     else:
         raise AssertionError("a skipped document cursor was accepted")
+
+
+def test_mcp_result_shape_matrix_preserves_distinct_evidence_once():
+    structured = {"path": "report.md", "complete": True}
+    cases = [
+        ({"structuredContent": structured}, "structured_only", structured, structured),
+        ({"content": [{"type": "text", "text": "plain result"}]},
+         "content_only", "plain result", "plain result"),
+        ({"structuredContent": structured,
+          "content": [{"type": "text", "text": '{"path":"report.md","complete":true}'}]},
+         "mixed_mirrored", structured, structured),
+        ({"structuredContent": structured,
+          "content": [{"type": "text", "text": "human explanation"}]},
+         "mixed_distinct", {"structuredContent": structured,
+                            "supplementalContent": "human explanation"}, structured),
+    ]
+    for result, shape, evidence, driver in cases:
+        normalized = normalize_mcp_result(result)
+        assert normalized.shape == shape
+        assert normalized.evidence == evidence
+        assert normalized.driver_evidence == driver
+        assert normalized.is_error is False
+    assert normalize_mcp_result({"isError": True, "structuredContent": {"error": "denied"}}).is_error
+
+
+def test_mcp_result_shape_matrix_rejects_empty_malformed_and_non_json_results():
+    invalid = [
+        {}, {"content": []}, {"content": "not blocks"},
+        {"content": [{"type": "text"}]},
+        {"structuredContent": []}, {"structuredContent": {"value": float("nan")}},
+        {"isError": "yes", "structuredContent": {"error": "bad"}},
+    ]
+    for result in invalid:
+        try:
+            normalize_mcp_result(result)
+        except MCPResultError:
+            pass
+        else:
+            raise AssertionError(f"invalid MCP result was accepted: {result!r}")

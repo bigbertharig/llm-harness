@@ -47,11 +47,11 @@ class ToolBudget:
         if self.calls >= self.max_calls:
             raise ValueError('child exceeded its tool-call limit')
 
-    def record(self, result: dict) -> int:
+    def record(self, result: object) -> int:
         size = len(json.dumps(result, ensure_ascii=False).encode('utf-8'))
+        self.calls += 1
         if size > MAX_TOOL_RESULT_BYTES or self.result_bytes + size > MAX_TOTAL_TOOL_BYTES:
             raise ValueError('child tool result exceeded its data budget')
-        self.calls += 1
         self.result_bytes += size
         return size
 

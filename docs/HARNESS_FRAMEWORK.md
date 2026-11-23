@@ -52,7 +52,10 @@ events and a terminal receipt.
 - P0d (document driver integrated): a model selects targeted reading or requests a complete read
   with cursor zero. The Harness then advances every cursor mechanically, pins the snapshot digest,
   journals each chunk, and reports exact contiguous coverage. Bounded compaction transactions remain.
-- P1: MCP shape matrix, delayed jobs, queue/steer ordering, and child lifecycle.
+- P1 (in progress): the MCP result-shape matrix is integrated so text-only, structured-only,
+  mirrored mixed, distinct mixed, explicit error, malformed, empty, and oversized results have one
+  canonical outcome. Remaining P1 work is delayed jobs, queue/steer ordering, and richer child
+  lifecycle/recovery.
 - P2/P3: repeated live reliability, security adversaries, endurance, and pinned external subsets.
 
 No new general-purpose tool enters the active catalog without a named failure class, deterministic

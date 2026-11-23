@@ -97,6 +97,7 @@ class ProjectAgentTests(unittest.TestCase):
 
         expected = len(json.dumps(evidence, ensure_ascii=False).encode('utf-8'))
         self.assertEqual(result['tool_budget']['result_bytes'], expected)
+        self.assertEqual(result['tool_call_summary'][0]['result_shape'], 'mixed_mirrored')
         self.assertIsNone(result['error'])
 
     def test_workspace_git_prompt_and_policy_stay_separate_from_file_reads(self):
