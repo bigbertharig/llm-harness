@@ -4,11 +4,13 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 from harness_core import (EVENT_SCHEMA_VERSION, EVENT_TYPES, EventJournal, InvalidTransition,
-                          DocumentDriverError, JournalError, MCPResultError, RunState, ScriptedProvider, ScriptedProviderError,
+                          DocumentDriverError, InputQueueState, JournalError, MCPResultError,
+                          RunState, ScriptedProvider, ScriptedProviderError,
                           RunRecorder, admit_evidence, decide_terminal, decide_tool_recovery, make_event,
-                          get_tool_profile, next_document_request, normalize_mcp_result,
+                          apply_next_input, get_tool_profile, next_document_request,
+                          normalize_mcp_result,
                           prepare_evidence, render_evidence,
-                          reduce_event, reduce_events)
+                          reduce_event, reduce_events, submit_input)
 
 DIGEST = "a" * 64
 
@@ -378,3 +380,44 @@ def test_mcp_result_shape_matrix_rejects_empty_malformed_and_non_json_results():
             pass
         else:
             raise AssertionError(f"invalid MCP result was accepted: {result!r}")
+
+
+def test_steer_passes_queued_send_only_at_a_safe_completed_boundary():
+    state = InputQueueState()
+    state = submit_input(state, "send-1", "queue", "a" * 64)
+    state = submit_input(state, "steer-1", "steer", "b" * 64)
+    state, applied = apply_next_input(state, "tool_end")
+    assert applied.identifier == "steer-1"
+    assert [row.identifier for row in state.pending] == ["send-1"]
+    state, applied = apply_next_input(state, "model_end")
+    assert applied is None
+    state, applied = apply_next_input(state, "turn_end")
+    assert applied.identifier == "send-1"
+    assert state.pending == () and state.applied_ids == ("steer-1", "send-1")
+
+
+def test_input_order_is_fifo_per_class_and_replay_is_rejected():
+    state = InputQueueState()
+    for identifier, mode, digest in (("queue-1", "queue", "1" * 64),
+                                     ("steer-1", "steer", "2" * 64),
+                                     ("steer-2", "steer", "3" * 64),
+                                     ("queue-2", "queue", "4" * 64)):
+        state = submit_input(state, identifier, mode, digest)
+    for expected in ("steer-1", "steer-2"):
+        state, applied = apply_next_input(state, "compaction_end")
+        assert applied.identifier == expected
+    for expected in ("queue-1", "queue-2"):
+        state, applied = apply_next_input(state, "turn_end")
+        assert applied.identifier == expected
+    try:
+        submit_input(state, "steer-1", "steer", "2" * 64)
+    except ValueError as exc:
+        assert "already submitted" in str(exc)
+    else:
+        raise AssertionError("applied input identity was replayed")
+    try:
+        apply_next_input(state, "tool_active")
+    except ValueError as exc:
+        assert "safe completed boundary" in str(exc)
+    else:
+        raise AssertionError("input was applied inside active work")

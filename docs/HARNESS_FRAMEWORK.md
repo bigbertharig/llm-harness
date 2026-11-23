@@ -54,8 +54,10 @@ events and a terminal receipt.
   journals each chunk, and reports exact contiguous coverage. Bounded compaction transactions remain.
 - P1 (in progress): the MCP result-shape matrix is integrated so text-only, structured-only,
   mirrored mixed, distinct mixed, explicit error, malformed, empty, and oversized results have one
-  canonical outcome. Remaining P1 work is delayed jobs, queue/steer ordering, and richer child
-  lifecycle/recovery.
+  canonical outcome. The pure input policy now makes normal sends wait for `turn_end`, permits steers
+  only after a model, tool, or compaction boundary, and preserves FIFO order within each class.
+  Session adapters still need to emit/apply that policy. Remaining P1 work is delayed jobs and richer
+  child lifecycle/recovery.
 - P2/P3: repeated live reliability, security adversaries, endurance, and pinned external subsets.
 
 No new general-purpose tool enters the active catalog without a named failure class, deterministic
