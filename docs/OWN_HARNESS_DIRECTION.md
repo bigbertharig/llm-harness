@@ -34,6 +34,11 @@ runtime, public tool catalog, default tests, and project-owned trials must still
 work if it is deleted. A useful candidate behavior enters the active engine only
 through an explicit shared contract and deterministic tests.
 
+The custom engine remains the maintained default. A third-party or site-specific engine integrates
+through the [engine-adapter contract](ENGINE_ADAPTERS.md). Gateway supplies the objective, ready route, and
+effective grants; the Harness boundary still validates tools and records canonical events. Swapping the
+reasoning loop must not swap the security model.
+
 ## How a feature enters the Harness
 
 1. Name the behavior and its failure cases. Use the candidate trials to find

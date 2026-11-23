@@ -26,6 +26,12 @@ tool execution, recovery, and terminal classification are deterministic project-
 8. **Policies** — retry, compaction, delegation, cancellation, and finalization are small replaceable
    policies tested with fake providers and clocks.
 
+The project-owned reducer and broker are the default engine. The versioned engine adapter connects
+additional harnesses through the same task/event/receipt boundary. Provider adapters normalize model
+and MCP protocols inside an engine; an engine adapter connects a complete bounded agent implementation
+to Gateway while preserving the project's authorization boundary. See
+[Harness engine adapters](ENGINE_ADAPTERS.md).
+
 Gateway owns conversations, operator policy, and requested work. Orchestration alone owns hardware
 admission and monitoring. Harness consumes a ready route and explicit grants, then returns auditable
 events and a terminal receipt.
@@ -61,7 +67,8 @@ events and a terminal receipt.
   recovery reconciles an active attempt and delivers a terminal receipt once without model polling.
   The supervisor/adapter and deterministic delayed-script fixture remain to be built. The other P1
   gap is richer child lifecycle/recovery.
-- P2/P3: repeated live reliability, security adversaries, endurance, and pinned external subsets.
+- P2/P3: engine-adapter conformance, repeated live reliability, security adversaries, endurance, and
+  pinned external subsets.
 
 No new general-purpose tool enters the active catalog without a named failure class, deterministic
 contract test, receipt fields, permission owner, and rollback/recovery behavior.

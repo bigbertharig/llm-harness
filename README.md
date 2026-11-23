@@ -15,11 +15,19 @@ Big Bertha runs across a Pi control host, an isolated GPU rig, and optional CPU 
 
 Benchmarking publishes a validated model library. Gateway imports it, serves model routes, and manages dashboard work. Harness supplies reviewed tool schemas and tests model interactions through Gateway routes. Orchestration enforces rig hardware rules and runs admitted model services. [The work-organization guide](https://github.com/bigbertharig/llm-gateway/blob/main/docs/WORK_ORGANIZATION_DIRECTION.md) tracks the remaining Manager-to-Orchestration migration.
 
-Private site configuration supplies host addresses, credentials, model files, and mounts. The published examples use role placeholders. For another card mix, run a hardware survey and validate fit, context, concurrency, and speed before offering a load recipe. [Porting guide](https://github.com/bigbertharig/llm-gateway/blob/main/docs/PORTABILITY.md).
+The project-owned engine is the default. The versioned engine contract defines a Gateway task envelope,
+ready route, and fixed grants as inputs, with canonical events and a terminal receipt as outputs.
+Additional harness engines integrate through that boundary while Gateway retains conversation state and policy and the
+Harness retains its tool broker. See [Harness engine adapters](docs/ENGINE_ADAPTERS.md).
+
+Private site configuration supplies host addresses, credentials, model files, and mounts. The published examples use role placeholders. For another card mix, run a hardware survey and validate fit, context, concurrency, and speed before offering a load recipe. The [cross-repo contract](https://github.com/bigbertharig/benchmarking/blob/main/CROSS_REPO_CONTRACT.md) defines the shared interfaces and the [porting guide](https://github.com/bigbertharig/llm-gateway/blob/main/docs/PORTABILITY.md) covers installation-specific inputs.
 
 ## Read this repo
 
 - [Own Harness direction](docs/OWN_HARNESS_DIRECTION.md): how tested external behavior becomes shared project code.
+- [Harness engine adapters](docs/ENGINE_ADAPTERS.md): how another harness can be substituted without
+  inheriting tool, policy, or hardware authority.
+- [Harness framework](docs/HARNESS_FRAMEWORK.md): the active deterministic layers and implementation status.
 - [Harness test playbook](docs/HARNESS_TEST_PLAYBOOK.md): how candidate harnesses are compared.
 - [Shared tool families](docs/TOOL_FAMILIES.md): tool ownership, model-neutral adapters, and Chat/Coding grants.
 - [Harness mode contract](docs/research/harness_mode_contract_2026-10-26.md): candidate boundaries and trial modes.
