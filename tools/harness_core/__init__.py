@@ -12,15 +12,16 @@ from .profiles import TOOL_PROFILES, ToolProfile, get_tool_profile
 from .provenance import (EVIDENCE_SOURCES, EvidenceBlock, admit_evidence,
                          prepare_evidence, render_evidence)
 from .recorder import RunRecorder
-from .recovery import RecoveryDecision, decide_tool_recovery
-from .reducer import InvalidTransition, LinkedState, RunState, ToolState, reduce_event, reduce_events
+from .recovery import RecoveryDecision, decide_job_recovery, decide_tool_recovery
+from .reducer import (InvalidTransition, JobState, LinkedState, RunState, ToolState,
+                      reduce_event, reduce_events)
 
 __all__ = ["EVENT_SCHEMA_VERSION", "EVENT_TYPES", "RUN_SCHEMA_VERSION", "InvalidTransition",
            "DocumentDriverError", "EVIDENCE_SOURCES", "EventJournal", "EvidenceBlock", "JournalError", "LinkedState",
-           "InputQueueState", "MCPResultError", "NormalizedMCPResult", "PendingInput",
+           "InputQueueState", "JobState", "MCPResultError", "NormalizedMCPResult", "PendingInput",
            "RecoveryDecision", "RunRecorder", "RunState", "SAFE_BOUNDARIES", "ToolState", "admit_evidence",
            "ScriptedProvider", "ScriptedProviderError", "TOOL_PROFILES", "TerminalDecision", "ToolProfile",
            "decide_terminal", "get_tool_profile", "next_document_request",
-           "apply_next_input", "decide_tool_recovery", "make_event", "normalize_mcp_result",
+           "apply_next_input", "decide_job_recovery", "decide_tool_recovery", "make_event", "normalize_mcp_result",
            "prepare_evidence", "reduce_event", "submit_input",
            "reduce_events", "render_evidence"]

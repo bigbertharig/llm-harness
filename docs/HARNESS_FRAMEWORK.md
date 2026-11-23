@@ -56,8 +56,11 @@ events and a terminal receipt.
   mirrored mixed, distinct mixed, explicit error, malformed, empty, and oversized results have one
   canonical outcome. The pure input policy now makes normal sends wait for `turn_end`, permits steers
   only after a model, tool, or compaction boundary, and preserves FIFO order within each class.
-  Session adapters still need to emit/apply that policy. Remaining P1 work is delayed jobs and richer
-  child lifecycle/recovery.
+  Session adapters still need to emit/apply that policy. Delayed jobs now have canonical start,
+  contiguous progress, and terminal events bound to a stable job ID, attempt, session, and tool call;
+  recovery reconciles an active attempt and delivers a terminal receipt once without model polling.
+  The supervisor/adapter and deterministic delayed-script fixture remain to be built. The other P1
+  gap is richer child lifecycle/recovery.
 - P2/P3: repeated live reliability, security adversaries, endurance, and pinned external subsets.
 
 No new general-purpose tool enters the active catalog without a named failure class, deterministic

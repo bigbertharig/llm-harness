@@ -25,6 +25,13 @@ class ToolState(LinkedState):
     argument_digest: str
 
 
+@dataclass(frozen=True)
+class JobState(LinkedState):
+    tool_call_id: str
+    attempt: int
+    next_progress_sequence: int = 0
+
+
 Linked = TypeVar("Linked", bound=LinkedState)
 
 
@@ -42,6 +49,7 @@ class RunState:
     tool_cycle_has_proposal: bool = False
     active_compaction_id: str | None = None
     children: tuple[LinkedState, ...] = ()
+    jobs: tuple[JobState, ...] = ()
     terminal_reason: str | None = None
     seen_event_ids: frozenset[str] = frozenset()
 
@@ -61,6 +69,7 @@ _TERMINAL_EVENTS = {
 _EVENT_KEYS = {"schema_version", "event_id", "run_id", "sequence", "type", "occurred_at",
                "conversation_id", "model_step_id", "tool_call_id", "approval_id", "attempt_id",
                "compaction_id", "child_run_id", "payload"}
+_EVENT_KEYS.add("job_id")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
@@ -184,6 +193,8 @@ def reduce_event(state: RunState, event: dict) -> RunState:
         if event_type == "tool.approved":
             _link(event, "approval_id")
         if event_type == "tool.committed":
+            if any(job.tool_call_id == call and job.state == "active" for job in state.jobs):
+                raise InvalidTransition("delayed job must reach a terminal receipt before tool commit")
             digest, receipt = (event["payload"].get("argument_digest"),
                                event["payload"].get("receipt_ref"))
             if digest != current.argument_digest or not isinstance(receipt, str) or not receipt:
@@ -245,6 +256,43 @@ def reduce_event(state: RunState, event: dict) -> RunState:
             state.children, index, LinkedState(child, event_type.removeprefix("child."))))
     elif event_type in {"input.queued", "input.steered", "input.applied"}:
         updated = state
+    elif event_type == "job.started":
+        job = _link(event, "job_id")
+        call = _link(event, "tool_call_id")
+        if _linked(state.jobs, job)[1] is not None:
+            raise InvalidTransition("job identifier was already started")
+        tool = _linked(state.tools, call)[1]
+        attempt = event["payload"].get("attempt")
+        session_id = event["payload"].get("session_id")
+        if tool is None or tool.state != "executing":
+            raise InvalidTransition("delayed job requires an executing tool call")
+        if type(attempt) is not int or attempt < 1 or not isinstance(session_id, str) or not session_id:
+            raise InvalidTransition("job start requires a positive attempt and session_id")
+        updated = replace(state, jobs=state.jobs + (
+            JobState(job, "active", call, attempt),))
+    elif event_type == "job.progressed":
+        job = _link(event, "job_id")
+        index, current = _linked(state.jobs, job)
+        attempt = event["payload"].get("attempt")
+        progress_sequence = event["payload"].get("progress_sequence")
+        if current is None or current.state != "active" or attempt != current.attempt:
+            raise InvalidTransition("job progress does not match the active attempt")
+        if type(progress_sequence) is not int or progress_sequence != current.next_progress_sequence:
+            raise InvalidTransition("job progress sequence is not contiguous")
+        updated = replace(state, jobs=_replace_link(
+            state.jobs, index, replace(current,
+                                       next_progress_sequence=current.next_progress_sequence + 1)))
+    elif event_type in {"job.succeeded", "job.failed", "job.cancelled", "job.timed_out"}:
+        job = _link(event, "job_id")
+        index, current = _linked(state.jobs, job)
+        attempt = event["payload"].get("attempt")
+        receipt = event["payload"].get("receipt_ref")
+        if current is None or current.state != "active" or attempt != current.attempt:
+            raise InvalidTransition("job terminal event does not match the active attempt")
+        if not isinstance(receipt, str) or not receipt:
+            raise InvalidTransition("job terminal event requires a durable receipt_ref")
+        updated = replace(state, jobs=_replace_link(
+            state.jobs, index, replace(current, state=event_type.removeprefix("job."))))
     elif event_type in _TERMINAL_EVENTS:
         if state.active_model_step_id or state.active_compaction_id:
             raise InvalidTransition("active work must settle before run termination")
@@ -252,6 +300,8 @@ def reduce_event(state: RunState, event: dict) -> RunState:
             raise InvalidTransition("tool calls must settle before run termination")
         if any(child.state == "active" for child in state.children):
             raise InvalidTransition("child runs must settle before run termination")
+        if any(job.state == "active" for job in state.jobs):
+            raise InvalidTransition("delayed jobs must settle before run termination")
         if event_type == "run.succeeded" and (state.needs_repair or state.awaiting_model_followup
                                                or not state.completed_model_steps):
             raise InvalidTransition("successful run requires a complete model response")

@@ -76,8 +76,9 @@ append-only recovery journals; uncertain-write reconciliation policy; untrusted 
 central read/Git/research profiles; and a snapshot-pinned complete-document cursor driver. The active
 engine is independent of `research/external_harnesses/`.
 
-The current P1 slice normalizes the MCP result matrix. Still open: delayed-job checkpoints,
-queue-versus-steer ordering, richer child cancellation/restart recovery, active session compaction,
+The current P1 work normalizes the MCP result matrix, defines queue-versus-steer ordering, and gives
+delayed jobs durable attempt/progress/terminal transitions with fail-closed recovery. Still open:
+the delayed-job supervisor/fixture, session-adapter integration, richer child cancellation/restart recovery, active session compaction,
 the large-document map/reduce driver, limit boundary probes, repeated adversarial/live reliability,
 and the 3/5/10 true-context compaction campaign.
 

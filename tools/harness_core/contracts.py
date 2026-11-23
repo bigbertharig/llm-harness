@@ -17,6 +17,8 @@ EVENT_TYPES = frozenset({
     "compaction.aborted", "retry.scheduled", "retry.started", "retry.exhausted",
     "child.delegated", "child.completed", "child.cancelled",
     "input.queued", "input.steered", "input.applied",
+    "job.started", "job.progressed", "job.succeeded", "job.failed",
+    "job.cancelled", "job.timed_out",
 })
 
 
@@ -29,7 +31,7 @@ def make_event(*, run_id: str, sequence: int, event_type: str,
     if event_type not in EVENT_TYPES:
         raise ValueError("unknown harness event type")
     allowed_links = {"conversation_id", "model_step_id", "tool_call_id", "approval_id",
-                     "attempt_id", "compaction_id", "child_run_id"}
+                     "attempt_id", "compaction_id", "child_run_id", "job_id"}
     if set(links) - allowed_links or not all(isinstance(value, str) and value
                                              for value in links.values()):
         raise ValueError("event links must be named non-empty identifiers")

@@ -6,7 +6,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from harness_core import (EVENT_SCHEMA_VERSION, EVENT_TYPES, EventJournal, InvalidTransition,
                           DocumentDriverError, InputQueueState, JournalError, MCPResultError,
                           RunState, ScriptedProvider, ScriptedProviderError,
-                          RunRecorder, admit_evidence, decide_terminal, decide_tool_recovery, make_event,
+                          RunRecorder, admit_evidence, decide_job_recovery, decide_terminal,
+                          decide_tool_recovery, make_event,
                           apply_next_input, get_tool_profile, next_document_request,
                           normalize_mcp_result,
                           prepare_evidence, render_evidence,
@@ -421,3 +422,88 @@ def test_input_order_is_fifo_per_class_and_replay_is_rejected():
         assert "safe completed boundary" in str(exc)
     else:
         raise AssertionError("input was applied inside active work")
+
+
+def test_delayed_job_is_event_driven_deduplicated_and_delivered_once():
+    run_id = "run-job"
+    journal = events(run_id, [
+        ("run.started", {}, {}),
+        ("model.started", {"model_step_id": "model-1"}, {}),
+        ("model.completed", {"model_step_id": "model-1"}, {"finish_reason": "tool_calls"}),
+        ("tool.proposed", {"tool_call_id": "tool-1"},
+         {"name": "run_script", "argument_digest": DIGEST}),
+        ("tool.validated", {"tool_call_id": "tool-1"}, {}),
+        ("tool.approved", {"tool_call_id": "tool-1", "approval_id": "approval-1"}, {}),
+        ("tool.executing", {"tool_call_id": "tool-1"}, {}),
+        ("job.started", {"tool_call_id": "tool-1", "job_id": "job-1"},
+         {"attempt": 1, "session_id": "session-1"}),
+        ("job.progressed", {"job_id": "job-1"},
+         {"attempt": 1, "progress_sequence": 0, "summary": "halfway"}),
+        ("job.succeeded", {"job_id": "job-1"},
+         {"attempt": 1, "receipt_ref": "jobs/job-1/attempt-1.json"}),
+        ("tool.committed", {"tool_call_id": "tool-1"},
+         {"argument_digest": DIGEST, "receipt_ref": "jobs/job-1/attempt-1.json"}),
+        ("tool.result_persisted", {"tool_call_id": "tool-1"}, {"artifact_ref": "result-1"}),
+        ("tool.result_delivered", {"tool_call_id": "tool-1"}, {}),
+        ("model.started", {"model_step_id": "model-2"}, {}),
+        ("model.completed", {"model_step_id": "model-2"}, {"finish_reason": "stop"}),
+        ("run.succeeded", {}, {"reason": "completed"}),
+    ])
+    state = RunState(run_id)
+    for index, event in enumerate(journal):
+        state = reduce_event(state, event)
+        if index == 7:
+            decision = decide_job_recovery(state, "job-1")
+            assert decision.action == "reconcile" and decision.attempt == 1
+        if index == 9:
+            decision = decide_job_recovery(state, "job-1")
+            assert decision.action == "commit_tool_result" and decision.attempt == 1
+    assert state.phase == "succeeded"
+    assert state.jobs[0].state == "succeeded"
+    assert state.jobs[0].next_progress_sequence == 1
+
+
+def test_delayed_job_rejects_early_commit_stale_attempt_and_duplicate_terminal():
+    run_id = "run-job-invalid"
+    prefix = events(run_id, [
+        ("run.started", {}, {}),
+        ("model.started", {"model_step_id": "model-1"}, {}),
+        ("model.completed", {"model_step_id": "model-1"}, {"finish_reason": "tool_calls"}),
+        ("tool.proposed", {"tool_call_id": "tool-1"},
+         {"name": "run_script", "argument_digest": DIGEST}),
+        ("tool.validated", {"tool_call_id": "tool-1"}, {}),
+        ("tool.approved", {"tool_call_id": "tool-1", "approval_id": "approval-1"}, {}),
+        ("tool.executing", {"tool_call_id": "tool-1"}, {}),
+        ("job.started", {"tool_call_id": "tool-1", "job_id": "job-1"},
+         {"attempt": 2, "session_id": "session-1"}),
+    ])
+    state = reduce_events(run_id, prefix)
+    invalid = [
+        make_event(run_id=run_id, sequence=8, event_type="tool.committed",
+                   tool_call_id="tool-1", payload={
+                       "argument_digest": DIGEST, "receipt_ref": "too-early"}),
+        make_event(run_id=run_id, sequence=8, event_type="job.progressed",
+                   job_id="job-1", payload={"attempt": 1, "progress_sequence": 0}),
+        make_event(run_id=run_id, sequence=8, event_type="job.progressed",
+                   job_id="job-1", payload={"attempt": 2, "progress_sequence": 1}),
+    ]
+    for event in invalid:
+        try:
+            reduce_event(state, event)
+        except InvalidTransition:
+            pass
+        else:
+            raise AssertionError("invalid delayed-job transition was accepted")
+    terminal = make_event(run_id=run_id, sequence=8, event_type="job.failed",
+                          job_id="job-1", payload={
+                              "attempt": 2, "receipt_ref": "jobs/job-1/attempt-2.json"})
+    state = reduce_event(state, terminal)
+    duplicate = make_event(run_id=run_id, sequence=9, event_type="job.failed",
+                           job_id="job-1", payload={
+                               "attempt": 2, "receipt_ref": "jobs/job-1/attempt-2-copy.json"})
+    try:
+        reduce_event(state, duplicate)
+    except InvalidTransition as exc:
+        assert "active attempt" in str(exc)
+    else:
+        raise AssertionError("duplicate job terminal receipt was accepted")

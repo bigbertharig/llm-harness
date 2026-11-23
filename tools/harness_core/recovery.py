@@ -12,6 +12,7 @@ class RecoveryDecision:
     action: str
     reason: str
     argument_digest: str | None = None
+    attempt: int | None = None
 
 
 def decide_tool_recovery(state: RunState, tool_call_id: str) -> RecoveryDecision:
@@ -36,3 +37,19 @@ def decide_tool_recovery(state: RunState, tool_call_id: str) -> RecoveryDecision
             "reconcile", "dispatch outcome is unknown; repeating it is unsafe", digest),
     }
     return decisions.get(tool.state, RecoveryDecision("fail", "tool state is not recoverable"))
+
+
+def decide_job_recovery(state: RunState, job_id: str) -> RecoveryDecision:
+    """Reconcile active work or deliver one already-terminal receipt; never resubmit."""
+    job = next((item for item in state.jobs if item.identifier == job_id), None)
+    if job is None:
+        return RecoveryDecision("fail", "job is absent from the durable journal")
+    if job.state == "active":
+        return RecoveryDecision(
+            "reconcile", f"job attempt {job.attempt} may still be running; do not resubmit",
+            attempt=job.attempt)
+    if job.state in {"succeeded", "failed", "cancelled", "timed_out"}:
+        return RecoveryDecision(
+            "commit_tool_result", f"job attempt {job.attempt} has a durable terminal receipt",
+            attempt=job.attempt)
+    return RecoveryDecision("fail", "job state is not recoverable")
