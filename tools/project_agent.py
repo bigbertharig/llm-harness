@@ -272,7 +272,11 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     answer = ''
     error = None
     started = time.monotonic()
-    max_model_steps = MAX_MODEL_STEPS + MAX_FINALIZATION_STEPS
+    # A requested tool budget must also be reachable across sequential model
+    # turns. Keep the hard ceiling, then reserve two tool-free terminal turns:
+    # one normal synthesis and one bounded truncation repair.
+    max_tool_steps = min(max_tool_calls, MAX_MODEL_STEPS) if tool_server else 1
+    max_model_steps = max_tool_steps + MAX_FINALIZATION_STEPS
     max_model_attempts = max_model_steps + MAX_PROVIDER_RETRIES
     provider_retries = 0
 
@@ -553,11 +557,11 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                                  'content': '\n'.join(row['_rendered'] for row in rows)[:160000]})
             for row in evidence_batch:
                 recorder.emit('tool.result_delivered', tool_call_id=row['_call_id'], payload={})
-            if budget_exhausted or logical_step >= MAX_MODEL_STEPS:
+            if budget_exhausted or logical_step >= max_tool_steps:
                 messages.append({'role': 'user', 'content':
                                  finalization if budget_exhausted else finalization_grace})
         else:
-            if budget_exhausted or logical_step >= MAX_MODEL_STEPS:
+            if budget_exhausted or logical_step >= max_tool_steps:
                 feedback += '\n' + (finalization if budget_exhausted else finalization_grace)
             messages.append({'role': 'user', 'content': feedback})
             for row in evidence_batch:
@@ -568,7 +572,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         if post_delivery_error:
             error = post_delivery_error
             break
-        if budget_exhausted or logical_step >= MAX_MODEL_STEPS:
+        if budget_exhausted or logical_step >= max_tool_steps:
             tools_enabled = False
     else:
         error = 'model step limit reached'
@@ -598,7 +602,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 'system_prompt_bytes': len(system.encode('utf-8')),
                 'user_envelope_bytes': len(messages[1]['content'].encode('utf-8')),
                 'output_limit_hit': any(row.get('finish_reason') == 'length' for row in steps),
-                'model_tool_steps_max': MAX_MODEL_STEPS,
+                'model_tool_steps_max': max_tool_steps,
                 'model_finalization_steps_max': MAX_FINALIZATION_STEPS,
                 'model_steps_max': max_model_steps,
                 'model_attempts_max': max_model_attempts,

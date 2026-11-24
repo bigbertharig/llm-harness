@@ -173,11 +173,11 @@ class ProjectAgentTests(unittest.TestCase):
         self.assertEqual(advertised[-1], [])
         self.assertIn('TOOL BUDGET EXHAUSTED', seen[-1][-1]['content'])
 
-    def test_six_tool_steps_get_one_bounded_tool_free_finalization_step(self):
+    def test_sequential_tool_steps_scale_to_requested_budget(self):
         calls = [json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
                              'arguments': {'path': 'README.md', 'start_line': line}})
-                 for line in range(1, 7)]
-        replies = iter([*(packet(call) for call in calls), packet('Final after six reads.')])
+                 for line in range(1, 9)]
+        replies = iter([*(packet(call) for call in calls), packet('Final after eight reads.')])
         advertised, seen = [], []
         server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
                   'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
@@ -194,13 +194,43 @@ class ProjectAgentTests(unittest.TestCase):
                 tool_profile='workspace_read', tool_server=server, workspace_root=Path(temp),
                 max_tool_calls=8, complete=complete)
         self.assertIsNone(result['error'])
-        self.assertEqual(result['tool_calls'], 6)
-        self.assertEqual(result['model_steps'], 7)
-        self.assertEqual(result['limits']['model_tool_steps_max'], 6)
-        self.assertEqual(result['limits']['model_finalization_steps_max'], 1)
-        self.assertTrue(all(advertised[index] for index in range(6)))
-        self.assertEqual(advertised[6], [])
-        self.assertIn('FINALIZATION STEP', seen[6][-1]['content'])
+        self.assertEqual(result['tool_calls'], 8)
+        self.assertEqual(result['model_steps'], 9)
+        self.assertEqual(result['limits']['model_tool_steps_max'], 8)
+        self.assertEqual(result['limits']['model_finalization_steps_max'], 2)
+        self.assertTrue(all(advertised[index] for index in range(8)))
+        self.assertEqual(advertised[8], [])
+        self.assertIn('TOOL BUDGET EXHAUSTED', seen[8][-1]['content'])
+
+    def test_budget_exhaustion_finalization_gets_one_truncation_repair(self):
+        request = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
+                              'arguments': {'path': 'README.md'}})
+        replies = iter([packet(request), packet('cut off', finish='length'),
+                        packet('Complete concise answer.')])
+        advertised = []
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
+                  'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
+                                   'inputSchema': {'type': 'object'}}], 'command': ['fixture']}
+        def complete(_gateway, _route, _messages, _max_tokens, _timeout, _key, tools):
+            advertised.append(tools)
+            return next(replies)
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool', return_value={
+                 'isError': False, 'structuredContent': {'path': 'README.md'}}):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='inspect', agent_type='coding', tool_profile='workspace_read',
+                tool_server=server, workspace_root=Path(temp), max_tool_calls=1,
+                complete=complete)
+        self.assertIsNone(result['error'])
+        self.assertEqual(result['answer'], 'Complete concise answer.')
+        self.assertEqual(result['model_steps'], 3)
+        self.assertEqual(result['limits']['model_tool_steps_max'], 1)
+        self.assertEqual(result['limits']['model_finalization_steps_max'], 2)
+        self.assertTrue(result['truncation_repair_attempted'])
+        self.assertTrue(advertised[0])
+        self.assertEqual(advertised[1:], [[], []])
 
     def test_model_call_receipt_records_exact_served_identity_and_usage(self):
         response = packet('answer', usage={'prompt_tokens': 10, 'completion_tokens': 2,
