@@ -721,7 +721,7 @@
     }
   },
   "schema": "harness-model-library/1",
-  "source_sha256": "3880a55208bc6e8b0bd41f9a88b367d4ad15aba66ae4f4ea622e3ad86236311c",
+  "source_sha256": "1d24f1d4cf440d9927cc1d146b682bad3f09f99bff71e5bc5e6d12c81e9ee4b9",
   "subagent_catalog": {
     "codex_luna": {
       "agent_types": [
@@ -745,23 +745,90 @@
       "provider": "codex",
       "status": "candidate"
     },
+    "ministral3_3b_separate": {
+      "agent_types": [
+        "coding",
+        "research"
+      ],
+      "evidence": "results/model_benchmark_records.jsonl: campaign_agent_contract-bounded-live-20261115a and campaign_ministral3_3b_agent_20260813_limit5_all",
+      "model": "ministral-3:3b",
+      "provider": "gateway_profile",
+      "status": "candidate"
+    },
+    "ministral3_8b_separate": {
+      "agent_types": [
+        "coding",
+        "research"
+      ],
+      "evidence": "results/model_benchmark_records.jsonl: campaign_ministral3_8b_agent_20260813_limit5_all",
+      "model": "ministral-3:8b",
+      "provider": "gateway_profile",
+      "status": "candidate"
+    },
     "nemotron74_shared_1060": {
       "agent_types": [
         "coding",
         "research"
       ],
-      "context_allocation": "fixed_per_chat",
+      "context_allocation": "dynamic_at_attach",
       "context_cap": 262144,
-      "evidence": "results/runtime_experiments/nemotron_shared_kv_http_20261116/README.md",
-      "max_attached_chats": 1,
+      "context_default": 262144,
+      "context_min": 16384,
+      "evidence": "results/runtime_experiments/nemotron_f16_context_sweep_20261118/README.md",
+      "max_attached_chats": 4,
+      "memory_estimate": {
+        "admission_reserve_mib": 256,
+        "fixed_compute_mib": 6,
+        "kv_mib_at_262144": 2048,
+        "method": "linear_f16_kv_plus_measured_per_context_parent_state",
+        "shared_parent_mib_per_chat": 182
+      },
       "mode": "gpu1060-chat-f16",
       "model": "nemotron-3.5-bolt:74b-a9b",
+      "placement_policy": "spread_then_stack",
       "provider": "rig_shared_chat",
       "requires": {
         "mode": "gpu0-main-f16-experts1234",
         "model": "nemotron-3.5-bolt:74b-a9b"
       },
       "status": "experimental"
+    },
+    "qwen35_headless_worker_pool": {
+      "agent_types": [
+        "coding",
+        "research"
+      ],
+      "context_allocation": "dynamic_at_attach",
+      "context_cap": 262144,
+      "context_default": 65536,
+      "context_min": 16384,
+      "evidence": "results/runtime_experiments/qwen35_q4_context_stacking_20261118/README.md",
+      "max_attached_chats": 16,
+      "max_full_context_chats": 11,
+      "memory_estimate": {
+        "admission_reserve_mib": 272,
+        "fixed_compute_mib": 0,
+        "kv_mib_at_262144": 1958,
+        "method": "linear_q4_worker_allocation_plus_measured_parent_runtime_state",
+        "shared_parent_mib_per_chat": 74,
+        "shared_parent_reserve_mib": 416
+      },
+      "mode": "gpu1060-pool-chat-q4",
+      "model": "qwen3.6:35b-a3b-xl",
+      "placement_policy": "spread_then_stack",
+      "provider": "rig_shared_chat",
+      "requires": {
+        "mode": "gpu0-worker-pool-q4",
+        "model": "qwen3.6:35b-a3b-xl"
+      },
+      "status": "experimental",
+      "validated_gap_fill_contexts": [
+        240000,
+        240000,
+        240000,
+        240000,
+        249000
+      ]
     },
     "qwen35_shared_1060": {
       "agent_types": [
@@ -772,16 +839,19 @@
       "context_cap": 262144,
       "context_default": 65536,
       "context_min": 16384,
-      "evidence": "results/runtime_experiments/qwen35_shared_kv_service_20261112/README.md",
-      "max_attached_chats": 5,
+      "evidence": "results/runtime_experiments/qwen35_q4_context_stacking_20261118/README.md",
+      "max_attached_chats": 6,
       "memory_estimate": {
-        "admission_reserve_mib": 256,
-        "fixed_compute_mib": 1029,
-        "kv_mib_at_262144": 1009,
-        "method": "linear_q4_kv_from_observed_262144_worker"
+        "admission_reserve_mib": 272,
+        "fixed_compute_mib": 0,
+        "kv_mib_at_262144": 1958,
+        "method": "linear_q4_worker_allocation_plus_measured_parent_runtime_state",
+        "shared_parent_mib_per_chat": 74,
+        "shared_parent_reserve_mib": 416
       },
       "mode": "gpu1060-chat-q4",
       "model": "qwen3.6:35b-a3b-xl",
+      "placement_policy": "spread_then_stack",
       "provider": "rig_shared_chat",
       "requires": {
         "mode": "gpu0-main-q4",
