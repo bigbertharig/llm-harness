@@ -70,9 +70,10 @@ events and a terminal receipt.
   result delivery; a deterministic delayed-script fixture covers success, nonzero exit, timeout, and
   restart. Child completion, failure, timeout, and cancellation require durable receipts and recover
   without replay. Model-call receipts retain requested route, served model/provider, provider request
-  ID, usage, finish reason, and latency. Six tool-capable turns have one separate tool-free finalization
-  turn. Known transient pre-response provider failures receive at most one retry with a capped,
-  cancellation-aware delay; failed attempts remain visible without consuming a logical model turn.
+  ID, usage, finish reason, and latency. Tool-capable turns follow the task's requested call budget up
+  to the hard cap of 12, with two separate tool-free finalization turns reserved for synthesis and one
+  bounded truncation repair. Known transient pre-response provider failures receive at most one retry
+  with a capped, cancellation-aware delay; failed attempts remain visible without consuming a logical model turn.
   Invalid requests and exhausted retries terminate explicitly. Each run is also bound to one stable
   conversation ID across events, receipts, and journal resume; contradictory conversation requests
   are constructed and persisted independently. Historical failure conversion and provider-specific

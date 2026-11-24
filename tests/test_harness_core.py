@@ -371,10 +371,19 @@ def test_complete_document_driver_advances_exact_snapshot_or_fails_closed():
 
 def test_mcp_result_shape_matrix_preserves_distinct_evidence_once():
     structured = {"path": "report.md", "complete": True}
+    resource_content = [
+        {"type": "text", "text": "Unicode evidence: café — 雪"},
+        {"type": "resource", "resource": {
+            "uri": "memory://fixture/report.md", "mimeType": "text/markdown",
+            "text": "# Report\nExact resource content.",
+        }},
+    ]
     cases = [
         ({"structuredContent": structured}, "structured_only", structured, structured),
         ({"content": [{"type": "text", "text": "plain result"}]},
          "content_only", "plain result", "plain result"),
+        ({"content": resource_content}, "content_only",
+         {"content": resource_content}, {"content": resource_content}),
         ({"structuredContent": structured,
           "content": [{"type": "text", "text": '{"path":"report.md","complete":true}'}]},
          "mixed_mirrored", structured, structured),

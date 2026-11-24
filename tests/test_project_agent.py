@@ -579,6 +579,29 @@ class ProjectAgentTests(unittest.TestCase):
         self.assertEqual(seen[1][0][-1]['role'], 'tool')
         self.assertEqual(seen[1][0][-1]['tool_call_id'], 'call_1')
         self.assertIn('untrusted_evidence', seen[1][0][-1]['content'])
+        self.assertEqual(result['tool_call_summary'][0]['tool'], 'read_workspace_file')
+
+    def test_similarly_named_native_tool_is_rejected_without_execution(self):
+        native = {'choices': [{'message': {'role': 'assistant', 'content': None,
+                  'tool_calls': [{'id': 'call_wrong', 'type': 'function', 'function': {
+                      'name': 'mcp__workspace_read__read_workspace_files',
+                      'arguments': '{"path":"README.md"}'}}]},
+                  'finish_reason': 'tool_calls'}]}
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
+                  'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
+                                   'inputSchema': {'type': 'object'}}],
+                  'command': ['fixture']}
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool') as call:
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='inspect', agent_type='coding', tool_profile='workspace_read',
+                tool_server=server, workspace_root=Path(temp), complete=lambda *_: native)
+        call.assert_not_called()
+        self.assertEqual(result['error'], 'model requested a tool outside the allowlist')
+        self.assertEqual(result['tool_calls'], 0)
+        self.assertEqual(result['run']['phase'], 'failed')
 
     def test_post_dispatch_exception_is_uncertain_and_never_retried(self):
         request = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
