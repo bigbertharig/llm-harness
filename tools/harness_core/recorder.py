@@ -14,8 +14,12 @@ from .reducer import RunState, reduce_event
 
 
 class RunRecorder:
-    def __init__(self, journal_root: Path | str | None = None, run_id: str | None = None):
+    def __init__(self, journal_root: Path | str | None = None, run_id: str | None = None,
+                 *, conversation_id: str | None = None):
         self.run_id = run_id or uuid4().hex
+        self.conversation_id = self.run_id if conversation_id is None else conversation_id
+        if not isinstance(self.conversation_id, str) or not self.conversation_id:
+            raise ValueError("conversation_id must be a non-empty identifier")
         self.state = RunState(self.run_id)
         self.events: list[dict] = []
         self.journal = EventJournal(journal_root, self.run_id) if journal_root is not None else None
@@ -28,9 +32,13 @@ class RunRecorder:
         events, state = recorder.journal.read()
         recorder.events = events
         recorder.state = state
+        recorder.conversation_id = state.conversation_id or run_id
         return recorder
 
     def emit(self, event_type: str, *, payload: dict | None = None, **links: str) -> dict:
+        supplied = links.setdefault("conversation_id", self.conversation_id)
+        if supplied != self.conversation_id:
+            raise ValueError("event conversation_id does not match the recorder")
         event = make_event(run_id=self.run_id, sequence=self.state.next_sequence,
                            event_type=event_type, payload=payload, **links)
         self.state = self.journal.append(event) if self.journal else reduce_event(self.state, event)
@@ -73,7 +81,8 @@ class RunRecorder:
         return os.fspath(target)
 
     def receipt(self) -> dict:
-        return {"run_id": self.run_id, "event_count": len(self.events),
+        return {"run_id": self.run_id, "conversation_id": self.conversation_id,
+                "event_count": len(self.events),
                 "phase": self.state.phase,
                 "journal_ref": os.fspath(self.journal.path) if self.journal else None,
                 "durable": self.journal is not None}

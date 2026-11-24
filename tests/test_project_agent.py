@@ -22,6 +22,31 @@ def packet(text, finish='stop', usage=None, **metadata):
 
 
 class ProjectAgentTests(unittest.TestCase):
+    def test_contradictory_conversations_never_share_model_context_or_receipts(self):
+        requests = []
+        def complete(_gateway, _route, messages, *_args):
+            context = '\n'.join(row['content'] for row in messages)
+            requests.append(context)
+            return packet('amber' if 'owner is Amber' in context else 'Violet')
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY):
+            root = Path(temp)
+            first = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='The owner is Amber. Return the owner.', agent_type='research',
+                conversation_id='session-amber', journal_root=root, complete=complete)
+            second = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='The owner is Violet. Return the owner.', agent_type='research',
+                conversation_id='session-violet', journal_root=root, complete=complete)
+        self.assertIn('owner is Amber', requests[0])
+        self.assertNotIn('owner is Violet', requests[0])
+        self.assertIn('owner is Violet', requests[1])
+        self.assertNotIn('owner is Amber', requests[1])
+        self.assertEqual(first['run']['conversation_id'], 'session-amber')
+        self.assertEqual(second['run']['conversation_id'], 'session-violet')
+        self.assertNotEqual(first['run']['journal_ref'], second['run']['journal_ref'])
+
     def test_completion_preserves_429_and_retry_after_as_typed_failure(self):
         error = HTTPError('http://gateway', 429, 'limited', {'Retry-After': '2.5'},
                           BytesIO(b'rate limited'))

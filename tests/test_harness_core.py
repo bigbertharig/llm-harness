@@ -468,6 +468,31 @@ def test_session_adapter_journals_queue_and_steer_across_restart(tmp_path):
     assert [row["type"] for row in restarted.events].count("input.applied") == 2
 
 
+def test_recorder_binds_every_event_to_one_conversation_across_restart(tmp_path):
+    root = tmp_path / "journal"
+    try:
+        RunRecorder(root, "invalid", conversation_id="")
+    except ValueError as exc:
+        assert "non-empty" in str(exc)
+    else:
+        raise AssertionError("empty conversation identity was accepted")
+    recorder = RunRecorder(root, "run-a", conversation_id="session-a")
+    started = recorder.emit("run.started", payload={})
+    assert started["conversation_id"] == "session-a"
+    try:
+        recorder.emit("input.queued", input_id="foreign", conversation_id="session-b",
+                      payload={"content_digest": "a" * 64})
+    except ValueError as exc:
+        assert "does not match" in str(exc)
+    else:
+        raise AssertionError("cross-conversation event was accepted")
+    resumed = RunRecorder.resume(root, "run-a")
+    resumed.emit("input.queued", input_id="local",
+                 payload={"content_digest": "b" * 64})
+    assert resumed.conversation_id == "session-a"
+    assert {event["conversation_id"] for event in resumed.events} == {"session-a"}
+
+
 def test_child_terminal_receipts_and_restart_recovery_are_explicit(tmp_path):
     root = tmp_path / "journal"
     recorder = RunRecorder(root, "run-child-recovery")

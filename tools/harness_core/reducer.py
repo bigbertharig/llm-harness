@@ -44,6 +44,7 @@ Linked = TypeVar("Linked", bound=LinkedState)
 @dataclass(frozen=True)
 class RunState:
     run_id: str
+    conversation_id: str | None = None
     next_sequence: int = 0
     phase: str = "new"
     active_model_step_id: str | None = None
@@ -123,6 +124,9 @@ def _validate_envelope(state: RunState, event: dict) -> str:
         raise InvalidTransition("occurred_at must include an offset")
     if event.get("run_id") != state.run_id:
         raise InvalidTransition("event belongs to another run")
+    if (state.conversation_id is not None
+            and event.get("conversation_id") != state.conversation_id):
+        raise InvalidTransition("event belongs to another conversation")
     if type(event.get("sequence")) is not int:
         raise InvalidTransition("event sequence must be an integer")
     if event.get("sequence") != state.next_sequence:
@@ -350,7 +354,9 @@ def reduce_event(state: RunState, event: dict) -> RunState:
     else:
         raise InvalidTransition(f"reducer has no transition for {event_type}")
 
-    return replace(updated, next_sequence=state.next_sequence + 1,
+    return replace(updated,
+                   conversation_id=state.conversation_id or event.get("conversation_id"),
+                   next_sequence=state.next_sequence + 1,
                    seen_event_ids=state.seen_event_ids | {event["event_id"]})
 
 

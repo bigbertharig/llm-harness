@@ -43,3 +43,24 @@ the Git tool could not diff the untracked `retry.py`, and the model said the thi
 retrieved even though the durable receipt records its successful delivery. This adds two concrete
 future cases: Git review must expose untracked additions, and a model must not deny a delivered tool
 result. `NO_BLOCKING_ISSUE` from this run is not accepted as evidence that the patch is correct.
+
+## Focused session-isolation audit
+
+The third run at `results/p1-qwen35-session-isolation-audit-20261124T0810Z/summary.json` was better
+shaped: it used three relevant calls, stayed within its answer budget, and correctly classified the
+contradictory-session case as a gap. Its explanation incorrectly called two input IDs in the existing
+queue/steer test two session IDs, but direct inspection supported the main result: no deterministic
+test bound contradictory model contexts and receipts to two distinct conversations.
+
+The follow-up contract binds every run event and receipt to one immutable conversation ID, preserves
+that binding on journal resume, rejects cross-conversation event injection, and verifies that two
+contradictory prompts produce isolated model requests and durable receipts. Corrected-fact resume and
+compaction retention remain separate cases.
+
+A final targeted review at
+`results/p1-qwen35-conversation-binding-review-20261124T0820Z/summary.json` gave Qwen two exact tracked
+files and an ordered two-call review. It followed the order, inspected both complete diffs, finished
+within budget, and found no blocking issue while citing the relevant resume, validation, reducer, and
+receipt behavior. This is a useful successful control against the earlier broad and unreachable-diff
+tasks: Qwen is materially more reliable when the task names reachable evidence and reserves a short
+terminal answer.

@@ -215,6 +215,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
               agent_type: str, tool_profile: str = 'none', tool_server: dict | None = None,
               workspace_root: Path | None = None, max_tokens: int = 1024,
               timeout_s: int = 180, max_tool_calls: int = 12,
+              conversation_id: str | None = None,
               cancel_path: Path | None = None,
               evidence_blocks: list[dict] | None = None,
               journal_root: Path | None = None,
@@ -257,7 +258,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     messages = [{'role': 'system', 'content': system},
                 {'role': 'user', 'content': child_task_envelope(prompt)},
                 *external_messages]
-    recorder = RunRecorder(journal_root)
+    recorder = RunRecorder(journal_root, conversation_id=conversation_id)
     recorder.emit('run.started', payload={'engine': 'big-bertha-project-agent'})
     budget = ToolBudget(max_tool_calls)
     attempted: set[str] = set()

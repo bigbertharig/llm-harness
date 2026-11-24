@@ -81,7 +81,9 @@ adapter, supervises delayed jobs with atomic receipts and exactly-once delivery,
 child failure, timeout, cancellation, and completion. Model calls retain served-route metadata and the
 six-step tool phase has one bounded tool-free finalization turn. The active engine now classifies
 provider failures, retries one known transient pre-response failure with capped cancellable backoff,
-and records failed and successful attempts separately from logical model turns. Still open:
+and records failed and successful attempts separately from logical model turns. Runs now bind one
+conversation identity across every event, receipt, and resume, with a deterministic contradictory-fact
+isolation test. Still open:
 active session compaction,
 the large-document map/reduce driver, limit boundary probes, repeated adversarial/live reliability,
 and the 3/5/10 true-context compaction campaign.
