@@ -71,7 +71,10 @@ events and a terminal receipt.
   restart. Child completion, failure, timeout, and cancellation require durable receipts and recover
   without replay. Model-call receipts retain requested route, served model/provider, provider request
   ID, usage, finish reason, and latency. Six tool-capable turns have one separate tool-free finalization
-  turn. Historical failure conversion and provider-specific adapters remain incremental P1 coverage.
+  turn. Known transient pre-response provider failures receive at most one retry with a capped,
+  cancellation-aware delay; failed attempts remain visible without consuming a logical model turn.
+  Invalid requests and exhausted retries terminate explicitly. Historical failure conversion and
+  provider-specific adapters remain incremental P1 coverage.
 - P2/P3: engine-adapter conformance, repeated live reliability, security adversaries, endurance, and
   pinned external subsets.
 

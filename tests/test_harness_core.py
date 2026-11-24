@@ -5,8 +5,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 from harness_core import (EVENT_SCHEMA_VERSION, EVENT_TYPES, EventJournal, InvalidTransition,
                           DelayedJobSupervisor, DocumentDriverError, InputQueueState, JournalError, MCPResultError,
-                          RunState, ScriptedProvider, ScriptedProviderError,
+                          ProviderFailure, RunState, ScriptedProvider, ScriptedProviderError,
                           RunRecorder, SessionInputAdapter, admit_evidence,
+                          cancellable_backoff, decide_provider_retry,
                           decide_child_recovery, decide_job_recovery, decide_terminal,
                           decide_tool_recovery, make_event,
                           apply_next_input, get_tool_profile, next_document_request,
@@ -32,6 +33,29 @@ def test_terminal_policy_never_accepts_empty_or_truncated_output():
                            repair_attempted=True, can_repair=True).action == "fail"
     assert decide_terminal(answer="done", finish_reason="stop",
                            repair_attempted=False, can_repair=True).action == "succeed"
+
+
+def test_provider_retry_policy_bounds_retry_after_and_rejects_terminal_failures():
+    short = decide_provider_retry(ProviderFailure("429", "limited", True, 0.25), 0, 10)
+    assert short.action == "retry" and short.delay_s == 0.25
+    capped = decide_provider_retry(ProviderFailure("429", "limited", True, 60), 0, 10)
+    assert capped.action == "retry" and capped.delay_s == 5.0
+    missing = decide_provider_retry(ProviderFailure("503", "busy", True), 0, 10)
+    invalid = decide_provider_retry(ProviderFailure("503", "busy", True, -1), 0, 10)
+    nonfinite = decide_provider_retry(ProviderFailure("503", "busy", True, float("nan")), 0, 10)
+    assert missing.delay_s == invalid.delay_s == nonfinite.delay_s == 0.5
+    assert decide_provider_retry(ProviderFailure("400", "bad request"), 0, 10).action == "fail"
+    assert decide_provider_retry(ProviderFailure("429", "limited", True), 1, 10).action == "exhaust"
+    assert decide_provider_retry(ProviderFailure("429", "limited", True, 2), 0, 1).action == "timeout"
+
+
+def test_provider_backoff_is_cancellable_between_short_waits():
+    waits = []
+    assert not cancellable_backoff(1.0, lambda: len(waits) >= 2, waits.append)
+    assert waits == [0.1, 0.1]
+    waits.clear()
+    assert cancellable_backoff(0.25, lambda: False, waits.append)
+    assert len(waits) == 3 and abs(sum(waits) - 0.25) < 1e-9
 
 
 def test_canonical_event_has_ordered_identity_and_rejects_unknown_types():

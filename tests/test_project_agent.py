@@ -1,9 +1,11 @@
 import json
+from io import BytesIO
 from pathlib import Path
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 import project_agent
@@ -20,6 +22,77 @@ def packet(text, finish='stop', usage=None, **metadata):
 
 
 class ProjectAgentTests(unittest.TestCase):
+    def test_completion_preserves_429_and_retry_after_as_typed_failure(self):
+        error = HTTPError('http://gateway', 429, 'limited', {'Retry-After': '2.5'},
+                          BytesIO(b'rate limited'))
+        with patch('project_agent.urlopen', side_effect=error):
+            with self.assertRaises(project_agent.ProviderFailure) as raised:
+                project_agent._completion('http://gateway', 'gpu-rig/test', [], 128, 10,
+                                          None, [])
+        self.assertEqual(raised.exception.code, '429')
+        self.assertEqual(raised.exception.retry_after_s, 2.5)
+        self.assertTrue(raised.exception.retryable)
+
+    def test_transient_provider_failure_retries_once_without_spending_logical_step(self):
+        calls = []
+        waits = []
+        def complete(*_args):
+            calls.append(True)
+            if len(calls) == 1:
+                raise project_agent.ProviderFailure('429', 'limited', True, 0.2)
+            return packet('Recovered answer.')
+        with patch('project_agent.fetch_ready_roster', return_value=READY):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='answer', agent_type='research', complete=complete,
+                retry_wait=waits.append)
+        self.assertIsNone(result['error'])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(result['model_steps'], 1)
+        self.assertEqual(result['model_attempts'], 2)
+        self.assertEqual(result['limits']['provider_retries_used'], 1)
+        self.assertEqual([row.get('error_code') for row in result['model_call_receipts']],
+                         ['429', None])
+        self.assertEqual(waits, [0.1, 0.1])
+
+    def test_provider_retry_backoff_honors_cancellation(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY):
+            cancel = Path(temp) / 'cancel'
+            def complete(*_args):
+                calls.append(True)
+                raise project_agent.ProviderFailure('429', 'limited', True, 0.2)
+            def cancel_during_wait(_seconds):
+                cancel.write_text('stop')
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='answer', agent_type='research', complete=complete,
+                cancel_path=cancel, retry_wait=cancel_during_wait)
+        self.assertEqual(result['error'], 'cancelled')
+        self.assertEqual(result['run']['phase'], 'cancelled')
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(result['limits']['provider_retries_used'], 0)
+
+    def test_nonretryable_and_repeated_provider_failures_stop_boundedly(self):
+        for failures, expected_calls, expected_retries in [
+                ([project_agent.ProviderFailure('400', 'bad request')], 1, 0),
+                ([project_agent.ProviderFailure('429', 'limited', True, 0),
+                  project_agent.ProviderFailure('429', 'still limited', True, 0)], 2, 1)]:
+            replies = iter(failures)
+            calls = []
+            def complete(*_args):
+                calls.append(True)
+                raise next(replies)
+            with patch('project_agent.fetch_ready_roster', return_value=READY):
+                result = project_agent.run_agent(
+                    gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                    prompt='answer', agent_type='research', complete=complete,
+                    retry_wait=lambda _seconds: None)
+            self.assertEqual(result['run']['phase'], 'failed')
+            self.assertEqual(len(calls), expected_calls)
+            self.assertEqual(result['limits']['provider_retries_used'], expected_retries)
+
     def test_strict_task_envelope_and_one_call_contract_reach_model(self):
         seen = []
         request = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',

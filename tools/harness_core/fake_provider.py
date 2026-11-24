@@ -5,15 +5,12 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 
+from .retry import ProviderFailure
+
 
 @dataclass(frozen=True)
-class ScriptedProviderError(RuntimeError):
-    code: str
-    message: str
-    retryable: bool = False
-
-    def __str__(self) -> str:
-        return self.message
+class ScriptedProviderError(ProviderFailure):
+    pass
 
 
 class ScriptedProvider:

@@ -9,12 +9,14 @@ import json
 import os
 from pathlib import Path
 import time
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from child_policy import (MAX_FINALIZATION_STEPS, MAX_MODEL_STEPS, MAX_TOOL_BATCH_CALLS, MAX_TOOL_ERRORS,
                           ToolBudget, validate_request)
 from harness_core import (DocumentDriverError, MCPResultError, RunRecorder, admit_evidence,
+                          MAX_PROVIDER_RETRIES, ProviderFailure, cancellable_backoff,
+                          decide_provider_retry,
                           decide_terminal, get_tool_profile, next_document_request,
                           normalize_mcp_result, prepare_evidence, render_evidence)
 from child_public_tools import call_tool, parse_requests
@@ -60,7 +62,17 @@ def _completion(gateway: str, route: str, messages: list[dict], max_tokens: int,
             packet = json.load(response)
     except HTTPError as exc:
         detail = exc.read().decode('utf-8', 'replace')
-        raise AgentLoopError(f'Gateway completion failed ({exc.code}): {detail[:1000]}') from exc
+        raw_retry_after = exc.headers.get('Retry-After') if exc.headers else None
+        try:
+            retry_after = float(raw_retry_after) if raw_retry_after is not None else None
+        except (TypeError, ValueError):
+            retry_after = None
+        raise ProviderFailure(str(exc.code),
+                              f'Gateway completion failed ({exc.code}): {detail[:1000]}',
+                              exc.code in {429, 500, 502, 503}, retry_after) from exc
+    except (URLError, TimeoutError) as exc:
+        raise ProviderFailure('transport', f'Gateway completion transport failed: {exc}',
+                              True) from exc
     choices = packet.get('choices') if isinstance(packet, dict) else None
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
         raise AgentLoopError('Gateway completion returned no choice')
@@ -206,6 +218,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
               cancel_path: Path | None = None,
               evidence_blocks: list[dict] | None = None,
               journal_root: Path | None = None,
+              retry_wait=time.sleep,
               complete=_completion) -> dict:
     """Run a bounded direct loop and return a model-neutral execution receipt."""
     if type(max_tokens) is not int or not 1 <= max_tokens <= MAX_AGENT_OUTPUT_TOKENS:
@@ -250,6 +263,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     attempted: set[str] = set()
     tool_calls: list[dict] = []
     steps: list[dict] = []
+    model_calls: list[dict] = []
     repair_attempted = False
     truncation_repair_attempted = False
     tool_errors = 0
@@ -258,6 +272,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     error = None
     started = time.monotonic()
     max_model_steps = MAX_MODEL_STEPS + MAX_FINALIZATION_STEPS
+    max_model_attempts = max_model_steps + MAX_PROVIDER_RETRIES
+    provider_retries = 0
 
     def digest_request(name: str, arguments: dict) -> str:
         normalized = json.dumps({'name': name, 'arguments': arguments}, sort_keys=True,
@@ -284,7 +300,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             error = decision.reason
         return decision.action
 
-    for step_number in range(1, max_model_steps + 1):
+    for step_number in range(1, max_model_attempts + 1):
         if cancel_path and cancel_path.exists():
             error = 'cancelled'
             break
@@ -301,14 +317,43 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                               os.environ.get('LLM_GATEWAY_API_KEY'),
                               advertised_tools if tools_enabled else [])
         except Exception as exc:
-            error = f'{type(exc).__name__}: {exc}'
+            failure = {'attempt': step_number, 'finish_reason': 'provider_error',
+                       'answer_bytes': 0, 'usage': {}, 'requested_route': route,
+                       'served_model': None,
+                       'served_provider': None,
+                       'provider_request_id': None,
+                       'latency_ms': max(0, round((time.monotonic() - model_started) * 1000)),
+                       'error_code': str(getattr(exc, 'code', type(exc).__name__)),
+                       'retryable': getattr(exc, 'retryable', False) is True}
+            model_calls.append(failure)
             recorder.emit('model.failed', model_step_id=model_step_id,
-                          payload={'finish_reason': 'provider_error'})
+                          payload={'finish_reason': 'provider_error',
+                                   'error_code': failure['error_code']})
+            remaining_after = timeout_s - (time.monotonic() - started)
+            decision = decide_provider_retry(exc, provider_retries, remaining_after)
+            if decision.action == 'retry':
+                recorder.emit('retry.scheduled', payload={
+                    'reason': decision.reason, 'delay_s': decision.delay_s})
+                continued = cancellable_backoff(
+                    decision.delay_s,
+                    lambda: bool(cancel_path and cancel_path.exists()), retry_wait)
+                if not continued:
+                    error = 'cancelled'
+                    break
+                recorder.emit('retry.started', payload={'attempt': provider_retries + 1})
+                provider_retries += 1
+                continue
+            if decision.action == 'exhaust':
+                recorder.emit('retry.exhausted', payload={'reason': decision.reason})
+            error = ('timeout' if decision.action == 'timeout'
+                     else f'{type(exc).__name__}: {exc}')
             break
         answer = _message_text(packet).strip()
         choice = packet['choices'][0]
         usage = packet.get('usage') if isinstance(packet.get('usage'), dict) else {}
-        step = {'step': step_number, 'finish_reason': choice.get('finish_reason'),
+        logical_step = len(steps) + 1
+        step = {'step': logical_step, 'attempt': step_number,
+                'finish_reason': choice.get('finish_reason'),
                 'answer_bytes': len(answer.encode('utf-8')), 'usage': usage,
                 'requested_route': route,
                 'served_model': packet.get('model') or expected_model,
@@ -316,13 +361,14 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 'provider_request_id': packet.get('id'),
                 'latency_ms': max(0, round((time.monotonic() - model_started) * 1000))}
         steps.append(step)
+        model_calls.append(step)
 
         if not tool_server or not tools_enabled:
             model_event = ('model.truncated' if choice.get('finish_reason') == 'length'
                            else 'model.completed')
             recorder.emit(model_event, model_step_id=model_step_id,
                           payload={'finish_reason': choice.get('finish_reason')})
-            if apply_terminal_policy(step_number, choice.get('finish_reason')) == 'repair':
+            if apply_terminal_policy(logical_step, choice.get('finish_reason')) == 'repair':
                 continue
             break
 
@@ -359,7 +405,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                                        'argument_digest': digest_request(name, arguments)})
                 recorder.emit('tool.failed', tool_call_id=call_id,
                               payload={'reason': 'duplicate request'})
-            if any(not row['is_error'] for row in tool_calls) and step_number < max_model_steps:
+            if any(not row['is_error'] for row in tool_calls) and logical_step < max_model_steps:
                 tools_enabled = False
                 messages.append(packet['choices'][0]['message'] if native_requests else
                                 {'role': 'assistant', 'content': answer})
@@ -371,7 +417,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             break
         if not pending:
             if any(not row['is_error'] for row in tool_calls):
-                if apply_terminal_policy(step_number, choice.get('finish_reason')) == 'repair':
+                if apply_terminal_policy(logical_step, choice.get('finish_reason')) == 'repair':
                     continue
                 break
             if repair_attempted:
@@ -506,11 +552,11 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                                  'content': '\n'.join(row['_rendered'] for row in rows)[:160000]})
             for row in evidence_batch:
                 recorder.emit('tool.result_delivered', tool_call_id=row['_call_id'], payload={})
-            if budget_exhausted or step_number >= MAX_MODEL_STEPS:
+            if budget_exhausted or logical_step >= MAX_MODEL_STEPS:
                 messages.append({'role': 'user', 'content':
                                  finalization if budget_exhausted else finalization_grace})
         else:
-            if budget_exhausted or step_number >= MAX_MODEL_STEPS:
+            if budget_exhausted or logical_step >= MAX_MODEL_STEPS:
                 feedback += '\n' + (finalization if budget_exhausted else finalization_grace)
             messages.append({'role': 'user', 'content': feedback})
             for row in evidence_batch:
@@ -521,7 +567,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         if post_delivery_error:
             error = post_delivery_error
             break
-        if budget_exhausted or step_number >= MAX_MODEL_STEPS:
+        if budget_exhausted or logical_step >= MAX_MODEL_STEPS:
             tools_enabled = False
     else:
         error = 'model step limit reached'
@@ -554,6 +600,9 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 'model_tool_steps_max': MAX_MODEL_STEPS,
                 'model_finalization_steps_max': MAX_FINALIZATION_STEPS,
                 'model_steps_max': max_model_steps,
+                'model_attempts_max': max_model_attempts,
+                'provider_retries_max': MAX_PROVIDER_RETRIES,
+                'provider_retries_used': provider_retries,
                 'tool_calls_max': budget.max_calls,
                 'tool_batch_compatibility_max': MAX_TOOL_BATCH_CALLS,
                 'tool_result_bytes_max': budget.receipt()['max_result_bytes'],
@@ -563,8 +612,9 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             },
             'answer': answer, 'error': error, 'duration_s': duration,
             'run': recorder.receipt(), 'evidence_provenance': external_provenance,
-            'model_steps': len(steps), 'max_model_steps': max_model_steps,
-            'model_call_receipts': steps,
+            'model_steps': len(steps), 'model_attempts': len(model_calls),
+            'max_model_steps': max_model_steps,
+            'model_call_receipts': model_calls,
             'steps': steps, 'tool_calls': len(tool_calls),
             'tool_call_summary': tool_calls, 'tool_budget': budget.receipt(),
             'file_evidence_coverage': _file_evidence_coverage(tool_calls),
