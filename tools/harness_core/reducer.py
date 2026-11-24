@@ -233,6 +233,20 @@ def reduce_event(state: RunState, event: dict) -> RunState:
             raise InvalidTransition("tool.uncertain requires a dispatched tool call")
         updated = replace(state, tools=_replace_link(
             state.tools, index, ToolState(call, "uncertain", current.argument_digest)))
+    elif event_type == "tool.reconciled":
+        call = _link(event, "tool_call_id")
+        index, current = _linked(state.tools, call)
+        if current is None or current.state not in {"executing", "uncertain"}:
+            raise InvalidTransition("tool.reconciled requires a possibly dispatched tool call")
+        digest = event["payload"].get("argument_digest")
+        receipt = event["payload"].get("receipt_ref")
+        outcome = event["payload"].get("outcome")
+        if (outcome != "committed" or digest != current.argument_digest
+                or not isinstance(receipt, str) or not receipt):
+            raise InvalidTransition(
+                "reconciled tool outcome requires committed, matching digest, and receipt_ref")
+        updated = replace(state, tools=_replace_link(
+            state.tools, index, ToolState(call, "committed", current.argument_digest)))
     elif event_type == "retry.scheduled":
         if not state.needs_repair or state.retry_state not in (None, "attempt_failed"):
             raise InvalidTransition("retry may be scheduled only for a failed or truncated step")

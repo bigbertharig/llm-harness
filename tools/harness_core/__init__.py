@@ -14,7 +14,7 @@ from .provenance import (EVIDENCE_SOURCES, EvidenceBlock, admit_evidence,
                          prepare_evidence, render_evidence)
 from .recorder import RunRecorder
 from .recovery import (RecoveryDecision, decide_child_recovery, decide_job_recovery,
-                       decide_tool_recovery)
+                       decide_tool_recovery, record_reconciled_tool_commit)
 from .retry import (MAX_PROVIDER_RETRIES, MAX_RETRY_DELAY_SECONDS, ProviderFailure,
                     RetryDecision, cancellable_backoff, decide_provider_retry)
 from .reducer import (ChildState, InvalidTransition, JobState, LinkedState, RunState, ToolState,
@@ -32,6 +32,7 @@ __all__ = ["EVENT_SCHEMA_VERSION", "EVENT_TYPES", "RUN_SCHEMA_VERSION", "Invalid
            "decide_terminal", "get_tool_profile", "next_document_request",
            "apply_next_input", "cancellable_backoff", "decide_child_recovery",
            "decide_job_recovery", "decide_provider_retry", "decide_tool_recovery",
+           "record_reconciled_tool_commit",
            "make_event", "normalize_mcp_result",
            "prepare_evidence", "reduce_event", "submit_input",
            "reduce_events", "render_evidence"]

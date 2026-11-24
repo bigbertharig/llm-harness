@@ -89,3 +89,7 @@ must never infer that a missing response means the action did not happen. A retr
 connector idempotency key tied to the normalized argument digest or a reconciliation result proving
 the original action absent. `tool.committed` means the external outcome is known and references its
 receipt; it does not mean the result has yet been durably stored or returned to the model.
+An interrupted `executing`/`uncertain` call can advance through `tool.reconciled` only when a connector
+proves a committed outcome with the exact durable argument digest and an external receipt. The result
+is then persisted and delivered in separate restart-safe transitions; reconciliation never emits a
+second `tool.executing` event.

@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from .reducer import RunState
+
+if TYPE_CHECKING:
+    from .recorder import RunRecorder
 
 
 @dataclass(frozen=True)
@@ -37,6 +41,28 @@ def decide_tool_recovery(state: RunState, tool_call_id: str) -> RecoveryDecision
             "reconcile", "dispatch outcome is unknown; repeating it is unsafe", digest),
     }
     return decisions.get(tool.state, RecoveryDecision("fail", "tool state is not recoverable"))
+
+
+def record_reconciled_tool_commit(recorder: "RunRecorder", tool_call_id: str, *,
+                                  argument_digest: str, receipt_ref: str) -> None:
+    """Record externally proven completion without replaying a dispatched tool.
+
+    The connector owns reconciliation and supplies its durable receipt. This
+    seam only accepts an exact digest match while recovery says reconciliation
+    is required; result persistence and model delivery remain later, separately
+    durable transitions.
+    """
+    decision = decide_tool_recovery(recorder.state, tool_call_id)
+    if decision.action != "reconcile":
+        raise ValueError(f"tool call is not awaiting reconciliation: {decision.reason}")
+    if argument_digest != decision.argument_digest:
+        raise ValueError("reconciled tool arguments do not match the durable request")
+    if not isinstance(receipt_ref, str) or not receipt_ref:
+        raise ValueError("reconciled tool commit requires a receipt_ref")
+    recorder.emit("tool.reconciled", tool_call_id=tool_call_id, payload={
+        "outcome": "committed", "argument_digest": argument_digest,
+        "receipt_ref": receipt_ref,
+    })
 
 
 def decide_job_recovery(state: RunState, job_id: str) -> RecoveryDecision:

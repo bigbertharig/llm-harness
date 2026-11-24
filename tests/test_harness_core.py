@@ -12,7 +12,7 @@ from harness_core import (EVENT_SCHEMA_VERSION, EVENT_TYPES, EventJournal, Inval
                           decide_tool_recovery, make_event,
                           apply_next_input, get_tool_profile, next_document_request,
                           normalize_mcp_result,
-                          prepare_evidence, render_evidence,
+                          prepare_evidence, record_reconciled_tool_commit, render_evidence,
                           reduce_event, reduce_events, submit_input)
 
 DIGEST = "a" * 64
@@ -285,6 +285,54 @@ def test_tool_recovery_never_repeats_a_possibly_dispatched_call():
             else:
                 raise AssertionError("changed arguments reused a committed tool call identity")
     assert decide_tool_recovery(state, "missing").action == "fail"
+
+
+def test_uncertain_tool_reconciles_committed_result_without_replay(tmp_path):
+    root = tmp_path / "journal"
+    recorder = RunRecorder(root, "run-reconcile")
+    recorder.emit("run.started")
+    recorder.emit("model.started", model_step_id="model-1")
+    recorder.emit("model.completed", model_step_id="model-1",
+                  payload={"finish_reason": "tool_calls"})
+    recorder.emit("tool.proposed", tool_call_id="write-1",
+                  payload={"name": "send_message", "argument_digest": DIGEST})
+    recorder.emit("tool.validated", tool_call_id="write-1")
+    recorder.emit("tool.approved", tool_call_id="write-1", approval_id="approval-1")
+    recorder.emit("tool.executing", tool_call_id="write-1")
+    recorder.emit("tool.uncertain", tool_call_id="write-1",
+                  payload={"reason": "response_lost"})
+
+    restarted = RunRecorder.resume(root, "run-reconcile")
+    assert decide_tool_recovery(restarted.state, "write-1").action == "reconcile"
+    before = restarted.receipt()["event_count"]
+    try:
+        record_reconciled_tool_commit(
+            restarted, "write-1", argument_digest="b" * 64,
+            receipt_ref="connector:message-1")
+    except ValueError as exc:
+        assert "do not match" in str(exc)
+    else:
+        raise AssertionError("changed arguments were accepted during reconciliation")
+    assert restarted.receipt()["event_count"] == before
+
+    record_reconciled_tool_commit(
+        restarted, "write-1", argument_digest=DIGEST,
+        receipt_ref="connector:message-1")
+    assert decide_tool_recovery(restarted.state, "write-1").action == "persist_result"
+    artifact = restarted.persist_result("write-1", {"message_id": "message-1"})
+    restarted.emit("tool.result_persisted", tool_call_id="write-1",
+                   payload={"artifact_ref": artifact})
+
+    after_persist = RunRecorder.resume(root, "run-reconcile")
+    assert decide_tool_recovery(after_persist.state, "write-1").action == "deliver_result"
+    after_persist.emit("tool.result_delivered", tool_call_id="write-1")
+    finished = RunRecorder.resume(root, "run-reconcile")
+    assert decide_tool_recovery(finished.state, "write-1").action == "done"
+    event_types = [event["type"] for event in finished.events]
+    assert event_types.count("tool.executing") == 1
+    assert event_types.count("tool.reconciled") == 1
+    assert event_types.count("tool.result_persisted") == 1
+    assert event_types.count("tool.result_delivered") == 1
 
 
 def test_evidence_boundary_owns_role_and_trust_and_escapes_injected_instructions():
