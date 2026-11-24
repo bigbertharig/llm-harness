@@ -81,6 +81,12 @@ events and a terminal receipt.
 - P2/P3: engine-adapter conformance, repeated live reliability, security adversaries, endurance, and
   pinned external subsets.
 
+Generation settings are explicit experimental inputs, not hidden model defaults. The project agent
+accepts a bounded sampler vocabulary, sends it unchanged to the ready route, and records the effective
+profile in the run receipt. Task contract v4 also permits up to four independent native tool calls per
+turn while keeping the text-call fallback to one strict JSON object; named tests, source paths, and
+symbols take priority over broad documentation searches.
+
 No new general-purpose tool enters the active catalog without a named failure class, deterministic
 contract test, receipt fields, permission owner, and rollback/recovery behavior.
 
