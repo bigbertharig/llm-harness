@@ -14,9 +14,9 @@ READY = {'object': 'ready_roster', 'version': 1, 'data': [{
     'output_limit': 512}]}
 
 
-def packet(text, finish='stop', usage=None):
-    return {'choices': [{'message': {'role': 'assistant', 'content': text},
-                         'finish_reason': finish}], 'usage': usage or {}}
+def packet(text, finish='stop', usage=None, **metadata):
+    return {**metadata, 'choices': [{'message': {'role': 'assistant', 'content': text},
+                                    'finish_reason': finish}], 'usage': usage or {}}
 
 
 class ProjectAgentTests(unittest.TestCase):
@@ -74,6 +74,51 @@ class ProjectAgentTests(unittest.TestCase):
         self.assertEqual(result['tool_budget']['max_calls'], 2)
         self.assertEqual(advertised[-1], [])
         self.assertIn('TOOL BUDGET EXHAUSTED', seen[-1][-1]['content'])
+
+    def test_six_tool_steps_get_one_bounded_tool_free_finalization_step(self):
+        calls = [json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
+                             'arguments': {'path': 'README.md', 'start_line': line}})
+                 for line in range(1, 7)]
+        replies = iter([*(packet(call) for call in calls), packet('Final after six reads.')])
+        advertised, seen = [], []
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
+                  'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
+                                   'inputSchema': {'type': 'object'}}], 'command': ['fixture']}
+        def complete(_gateway, _route, messages, _max_tokens, _timeout, _key, tools):
+            advertised.append(tools); seen.append(list(messages)); return next(replies)
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool', return_value={
+                 'isError': False, 'structuredContent': {'path': 'README.md'}}):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='perform a bounded repository audit', agent_type='coding',
+                tool_profile='workspace_read', tool_server=server, workspace_root=Path(temp),
+                max_tool_calls=8, complete=complete)
+        self.assertIsNone(result['error'])
+        self.assertEqual(result['tool_calls'], 6)
+        self.assertEqual(result['model_steps'], 7)
+        self.assertEqual(result['limits']['model_tool_steps_max'], 6)
+        self.assertEqual(result['limits']['model_finalization_steps_max'], 1)
+        self.assertTrue(all(advertised[index] for index in range(6)))
+        self.assertEqual(advertised[6], [])
+        self.assertIn('FINALIZATION STEP', seen[6][-1]['content'])
+
+    def test_model_call_receipt_records_exact_served_identity_and_usage(self):
+        response = packet('answer', usage={'prompt_tokens': 10, 'completion_tokens': 2,
+                                           'cost': 0.0003},
+                          id='request-1', model='served/model', provider='Provider A')
+        with patch('project_agent.fetch_ready_roster', return_value=READY):
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='answer', agent_type='research', complete=lambda *_: response)
+        call = result['model_call_receipts'][0]
+        self.assertEqual(call['requested_route'], 'gpu-rig/test')
+        self.assertEqual(call['served_model'], 'served/model')
+        self.assertEqual(call['served_provider'], 'Provider A')
+        self.assertEqual(call['provider_request_id'], 'request-1')
+        self.assertEqual(call['usage']['cost'], 0.0003)
+        self.assertGreaterEqual(call['latency_ms'], 0)
 
     def test_tool_budget_counts_normalized_evidence_once(self):
         request = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',

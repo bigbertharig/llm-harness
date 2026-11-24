@@ -4,9 +4,10 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 from harness_core import (EVENT_SCHEMA_VERSION, EVENT_TYPES, EventJournal, InvalidTransition,
-                          DocumentDriverError, InputQueueState, JournalError, MCPResultError,
+                          DelayedJobSupervisor, DocumentDriverError, InputQueueState, JournalError, MCPResultError,
                           RunState, ScriptedProvider, ScriptedProviderError,
-                          RunRecorder, admit_evidence, decide_job_recovery, decide_terminal,
+                          RunRecorder, SessionInputAdapter, admit_evidence,
+                          decide_child_recovery, decide_job_recovery, decide_terminal,
                           decide_tool_recovery, make_event,
                           apply_next_input, get_tool_profile, next_document_request,
                           normalize_mcp_result,
@@ -424,6 +425,69 @@ def test_input_order_is_fifo_per_class_and_replay_is_rejected():
         raise AssertionError("input was applied inside active work")
 
 
+def test_session_adapter_journals_queue_and_steer_across_restart(tmp_path):
+    root = tmp_path / "journal"
+    recorder = RunRecorder(root, "run-input-session")
+    recorder.emit("run.started", payload={})
+    adapter = SessionInputAdapter(recorder)
+    queued_digest = adapter.submit("input-queue", "queue", "next turn")
+    steer_digest = adapter.submit("input-steer", "steer", "adjust this turn")
+    assert queued_digest != steer_digest
+    assert adapter.apply_next("model_end").identifier == "input-steer"
+    assert adapter.apply_next("model_end") is None
+
+    restarted = RunRecorder.resume(root, recorder.run_id)
+    resumed = SessionInputAdapter(restarted)
+    assert resumed.apply_next("turn_end").identifier == "input-queue"
+    assert resumed.apply_next("turn_end") is None
+    assert restarted.state.applied_input_ids == ("input-steer", "input-queue")
+    assert [row["type"] for row in restarted.events].count("input.applied") == 2
+
+
+def test_child_terminal_receipts_and_restart_recovery_are_explicit(tmp_path):
+    root = tmp_path / "journal"
+    recorder = RunRecorder(root, "run-child-recovery")
+    recorder.emit("run.started", payload={})
+    recorder.emit("child.delegated", child_run_id="child-1", payload={})
+    restarted = RunRecorder.resume(root, recorder.run_id)
+    assert decide_child_recovery(restarted.state, "child-1").action == "reconcile"
+    restarted.emit("child.timed_out", child_run_id="child-1",
+                   payload={"receipt_ref": "children/child-1.json"})
+    recovered = RunRecorder.resume(root, recorder.run_id)
+    decision = decide_child_recovery(recovered.state, "child-1")
+    assert decision.action == "done" and "timed_out" in decision.reason
+    recovered.emit("run.failed", payload={"reason": "child timed out"})
+    assert recovered.state.phase == "failed"
+
+
+def test_child_terminal_event_requires_receipt_and_cannot_repeat():
+    state = reduce_events("run-child-invalid", events("run-child-invalid", [
+        ("run.started", {}, {}),
+        ("child.delegated", {"child_run_id": "child-1"}, {}),
+    ]))
+    missing = make_event(run_id=state.run_id, sequence=state.next_sequence,
+                         event_type="child.failed", child_run_id="child-1", payload={})
+    try:
+        reduce_event(state, missing)
+    except InvalidTransition as exc:
+        assert "receipt_ref" in str(exc)
+    else:
+        raise AssertionError("child failure without a durable receipt was accepted")
+    terminal = make_event(run_id=state.run_id, sequence=state.next_sequence,
+                          event_type="child.failed", child_run_id="child-1",
+                          payload={"receipt_ref": "children/child-1.json"})
+    state = reduce_event(state, terminal)
+    duplicate = make_event(run_id=state.run_id, sequence=state.next_sequence,
+                           event_type="child.cancelled", child_run_id="child-1",
+                           payload={"receipt_ref": "children/child-1-copy.json"})
+    try:
+        reduce_event(state, duplicate)
+    except InvalidTransition as exc:
+        assert "active child" in str(exc)
+    else:
+        raise AssertionError("duplicate child terminal outcome was accepted")
+
+
 def test_delayed_job_is_event_driven_deduplicated_and_delivered_once():
     run_id = "run-job"
     journal = events(run_id, [
@@ -461,6 +525,139 @@ def test_delayed_job_is_event_driven_deduplicated_and_delivered_once():
     assert state.phase == "succeeded"
     assert state.jobs[0].state == "succeeded"
     assert state.jobs[0].next_progress_sequence == 1
+
+
+def test_delayed_job_recovery_resumes_each_durable_delivery_boundary_once(tmp_path):
+    run_id = "run-job-restart"
+    records = events(run_id, [
+        ("run.started", {}, {}),
+        ("model.started", {"model_step_id": "model-1"}, {}),
+        ("model.completed", {"model_step_id": "model-1"}, {"finish_reason": "tool_calls"}),
+        ("tool.proposed", {"tool_call_id": "tool-1"},
+         {"name": "run_script", "argument_digest": DIGEST}),
+        ("tool.validated", {"tool_call_id": "tool-1"}, {}),
+        ("tool.approved", {"tool_call_id": "tool-1", "approval_id": "approval-1"}, {}),
+        ("tool.executing", {"tool_call_id": "tool-1"}, {}),
+        ("job.started", {"tool_call_id": "tool-1", "job_id": "job-1"},
+         {"attempt": 1, "session_id": "session-1"}),
+        ("job.progressed", {"job_id": "job-1"},
+         {"attempt": 1, "progress_sequence": 0}),
+        ("job.succeeded", {"job_id": "job-1"},
+         {"attempt": 1, "receipt_ref": "jobs/job-1/attempt-1.json"}),
+        ("tool.committed", {"tool_call_id": "tool-1"},
+         {"argument_digest": DIGEST, "receipt_ref": "jobs/job-1/attempt-1.json"}),
+        ("tool.result_persisted", {"tool_call_id": "tool-1"}, {"artifact_ref": "result-1"}),
+        ("tool.result_delivered", {"tool_call_id": "tool-1"}, {}),
+        ("model.started", {"model_step_id": "model-2"}, {}),
+        ("model.completed", {"model_step_id": "model-2"}, {"finish_reason": "stop"}),
+        ("run.succeeded", {}, {"reason": "completed"}),
+    ])
+    root = tmp_path / "journal"
+    journal = EventJournal(root, run_id)
+    for record in records[:8]:
+        journal.append(record)
+
+    _saved, restarted = EventJournal(root, run_id).read()
+    assert decide_job_recovery(restarted, "job-1").action == "reconcile"
+
+    for record in records[8:10]:
+        EventJournal(root, run_id).append(record)
+    _saved, terminal = EventJournal(root, run_id).read()
+    assert decide_job_recovery(terminal, "job-1").action == "commit_tool_result"
+
+    expected = ((10, "persist_result"), (11, "deliver_result"), (12, "done"))
+    for index, action in expected:
+        EventJournal(root, run_id).append(records[index])
+        _saved, recovered = EventJournal(root, run_id).read()
+        decision = decide_job_recovery(recovered, "job-1")
+        assert decision.action == action and decision.attempt == 1
+
+    for record in records[13:]:
+        EventJournal(root, run_id).append(record)
+    saved, completed = EventJournal(root, run_id).read()
+    assert completed.phase == "succeeded"
+    assert [row["type"] for row in saved].count("tool.result_delivered") == 1
+
+
+def _executing_job_recorder(root, run_id="run-supervisor"):
+    recorder = RunRecorder(root, run_id)
+    recorder.emit("run.started", payload={})
+    recorder.emit("model.started", model_step_id="model-1", payload={})
+    recorder.emit("model.completed", model_step_id="model-1",
+                  payload={"finish_reason": "tool_calls"})
+    recorder.emit("tool.proposed", tool_call_id="tool-1",
+                  payload={"name": "run_script", "argument_digest": DIGEST})
+    recorder.emit("tool.validated", tool_call_id="tool-1", payload={})
+    recorder.emit("tool.approved", tool_call_id="tool-1", approval_id="approval-1",
+                  payload={})
+    recorder.emit("tool.executing", tool_call_id="tool-1", payload={})
+    return recorder
+
+
+def test_delayed_job_supervisor_writes_receipt_and_wakes_model_once(tmp_path):
+    root = tmp_path / "journal"
+    recorder = _executing_job_recorder(root)
+    supervisor = DelayedJobSupervisor(tmp_path / "jobs")
+    fixture = Path(__file__).resolve().parents[1] / "tools/fixtures/delayed_job.py"
+    receipt = supervisor.run(
+        recorder, tool_call_id="tool-1", job_id="job-1", attempt=1,
+        session_id="session-1",
+        argv=[sys.executable, str(fixture), "--steps", "3", "--marker", "KNOWN_FINAL"],
+        timeout_s=5)
+    assert receipt["status"] == "succeeded" and receipt["exit_code"] == 0
+    assert "KNOWN_FINAL" in receipt["summary"]
+    assert Path(receipt["receipt_ref"]).is_file() and Path(receipt["log_ref"]).is_file()
+
+    restarted = RunRecorder.resume(root, recorder.run_id)
+    durable = supervisor.read_receipt("job-1", 1)
+    tampered = {**durable, "summary": "substituted result"}
+    try:
+        supervisor.deliver_terminal(restarted, "job-1", tampered)
+    except JournalError as exc:
+        assert "does not match" in str(exc)
+    else:
+        raise AssertionError("substituted delayed-job receipt was delivered")
+    delivered = supervisor.deliver_terminal(restarted, "job-1", durable)
+    assert delivered == durable
+    assert supervisor.deliver_terminal(restarted, "job-1", durable) is None
+    event_types = [row["type"] for row in restarted.events]
+    assert event_types.count("job.started") == 1
+    assert event_types.count("job.progressed") == 3
+    assert event_types.count("job.succeeded") == 1
+    assert event_types.count("tool.result_delivered") == 1
+
+
+def test_delayed_job_supervisor_classifies_failure_timeout_and_restart(tmp_path):
+    fixture = Path(__file__).resolve().parents[1] / "tools/fixtures/delayed_job.py"
+    cases = [
+        ("failure", ["--steps", "1", "--exit-code", "7"], 5, "failed", 7),
+        ("timeout", ["--steps", "2", "--delay-ms", "500"], .05, "timed_out", None),
+    ]
+    for suffix, arguments, timeout_s, status, expected_exit in cases:
+        root = tmp_path / f"journal-{suffix}"
+        recorder = _executing_job_recorder(root, f"run-{suffix}")
+        supervisor = DelayedJobSupervisor(tmp_path / f"jobs-{suffix}")
+        receipt = supervisor.run(
+            recorder, tool_call_id="tool-1", job_id=f"job-{suffix}", attempt=1,
+            session_id="session-1", argv=[sys.executable, str(fixture), *arguments],
+            timeout_s=timeout_s)
+        assert receipt["status"] == status
+        if expected_exit is not None:
+            assert receipt["exit_code"] == expected_exit
+        restarted = RunRecorder.resume(root, recorder.run_id)
+        durable = supervisor.read_receipt(f"job-{suffix}", 1)
+        assert supervisor.deliver_terminal(restarted, f"job-{suffix}", durable) == durable
+        assert restarted.state.tools[0].state == "result_delivered"
+
+    root = tmp_path / "journal-cancel"
+    recorder = _executing_job_recorder(root, "run-cancel")
+    supervisor = DelayedJobSupervisor(tmp_path / "jobs-cancel")
+    cancelled = supervisor.run(
+        recorder, tool_call_id="tool-1", job_id="job-cancel", attempt=1,
+        session_id="session-1",
+        argv=[sys.executable, str(fixture), "--steps", "2", "--delay-ms", "500"],
+        timeout_s=5, cancel_requested=lambda: True)
+    assert cancelled["status"] == "cancelled"
 
 
 def test_delayed_job_rejects_early_commit_stale_attempt_and_duplicate_terminal():

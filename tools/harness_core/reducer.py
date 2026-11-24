@@ -8,6 +8,7 @@ import re
 from typing import TypeVar
 
 from .contracts import EVENT_SCHEMA_VERSION, EVENT_TYPES
+from .input_queue import InputQueueState, PendingInput, apply_next_input, submit_input
 
 
 class InvalidTransition(ValueError):
@@ -32,6 +33,11 @@ class JobState(LinkedState):
     next_progress_sequence: int = 0
 
 
+@dataclass(frozen=True)
+class ChildState(LinkedState):
+    receipt_ref: str | None = None
+
+
 Linked = TypeVar("Linked", bound=LinkedState)
 
 
@@ -48,8 +54,11 @@ class RunState:
     awaiting_model_followup: bool = False
     tool_cycle_has_proposal: bool = False
     active_compaction_id: str | None = None
-    children: tuple[LinkedState, ...] = ()
+    children: tuple[ChildState, ...] = ()
     jobs: tuple[JobState, ...] = ()
+    input_sequence: int = 0
+    pending_inputs: tuple[PendingInput, ...] = ()
+    applied_input_ids: tuple[str, ...] = ()
     terminal_reason: str | None = None
     seen_event_ids: frozenset[str] = frozenset()
 
@@ -70,6 +79,7 @@ _EVENT_KEYS = {"schema_version", "event_id", "run_id", "sequence", "type", "occu
                "conversation_id", "model_step_id", "tool_call_id", "approval_id", "attempt_id",
                "compaction_id", "child_run_id", "payload"}
 _EVENT_KEYS.add("job_id")
+_EVENT_KEYS.add("input_id")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
@@ -246,16 +256,44 @@ def reduce_event(state: RunState, event: dict) -> RunState:
         child = _link(event, "child_run_id")
         if _linked(state.children, child)[1] is not None:
             raise InvalidTransition("child run identifier was already delegated")
-        updated = replace(state, children=state.children + (LinkedState(child, "active"),))
-    elif event_type in {"child.completed", "child.cancelled"}:
+        updated = replace(state, children=state.children + (ChildState(child, "active"),))
+    elif event_type in {"child.completed", "child.failed", "child.cancelled", "child.timed_out"}:
         child = _link(event, "child_run_id")
         index, current = _linked(state.children, child)
         if current is None or current.state != "active":
             raise InvalidTransition("child terminal event requires an active child")
+        receipt = event["payload"].get("receipt_ref")
+        if not isinstance(receipt, str) or not receipt:
+            raise InvalidTransition("child terminal event requires a durable receipt_ref")
         updated = replace(state, children=_replace_link(
-            state.children, index, LinkedState(child, event_type.removeprefix("child."))))
-    elif event_type in {"input.queued", "input.steered", "input.applied"}:
-        updated = state
+            state.children, index,
+            ChildState(child, event_type.removeprefix("child."), receipt)))
+    elif event_type in {"input.queued", "input.steered"}:
+        input_id = _link(event, "input_id")
+        mode = event_type.removeprefix("input.")
+        digest = event["payload"].get("content_digest")
+        queue = InputQueueState(state.input_sequence, state.pending_inputs,
+                                state.applied_input_ids)
+        try:
+            queue = submit_input(queue, input_id, "queue" if mode == "queued" else "steer",
+                                 digest)
+        except ValueError as exc:
+            raise InvalidTransition(str(exc)) from exc
+        updated = replace(state, input_sequence=queue.next_sequence,
+                          pending_inputs=queue.pending, applied_input_ids=queue.applied_ids)
+    elif event_type == "input.applied":
+        input_id = _link(event, "input_id")
+        boundary = event["payload"].get("boundary")
+        queue = InputQueueState(state.input_sequence, state.pending_inputs,
+                                state.applied_input_ids)
+        try:
+            queue, selected = apply_next_input(queue, boundary)
+        except ValueError as exc:
+            raise InvalidTransition(str(exc)) from exc
+        if selected is None or selected.identifier != input_id:
+            raise InvalidTransition("input.applied does not match the next eligible input")
+        updated = replace(state, input_sequence=queue.next_sequence,
+                          pending_inputs=queue.pending, applied_input_ids=queue.applied_ids)
     elif event_type == "job.started":
         job = _link(event, "job_id")
         call = _link(event, "tool_call_id")

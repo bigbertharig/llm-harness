@@ -58,15 +58,20 @@ events and a terminal receipt.
 - P0d (document driver integrated): a model selects targeted reading or requests a complete read
   with cursor zero. The Harness then advances every cursor mechanically, pins the snapshot digest,
   journals each chunk, and reports exact contiguous coverage. Bounded compaction transactions remain.
-- P1 (in progress): the MCP result-shape matrix is integrated so text-only, structured-only,
+- P1 (integrated core): the MCP result-shape matrix normalizes text-only, structured-only,
   mirrored mixed, distinct mixed, explicit error, malformed, empty, and oversized results have one
   canonical outcome. The pure input policy now makes normal sends wait for `turn_end`, permits steers
   only after a model, tool, or compaction boundary, and preserves FIFO order within each class.
-  Session adapters still need to emit/apply that policy. Delayed jobs now have canonical start,
+  The durable session adapter emits and applies that policy across restart. Delayed jobs have
+  canonical start,
   contiguous progress, and terminal events bound to a stable job ID, attempt, session, and tool call;
   recovery reconciles an active attempt and delivers a terminal receipt once without model polling.
-  The supervisor/adapter and deterministic delayed-script fixture remain to be built. The other P1
-  gap is richer child lifecycle/recovery.
+  The supervisor owns bounded logs, atomic terminal receipts, timeout/cancellation, and exactly-once
+  result delivery; a deterministic delayed-script fixture covers success, nonzero exit, timeout, and
+  restart. Child completion, failure, timeout, and cancellation require durable receipts and recover
+  without replay. Model-call receipts retain requested route, served model/provider, provider request
+  ID, usage, finish reason, and latency. Six tool-capable turns have one separate tool-free finalization
+  turn. Historical failure conversion and provider-specific adapters remain incremental P1 coverage.
 - P2/P3: engine-adapter conformance, repeated live reliability, security adversaries, endurance, and
   pinned external subsets.
 

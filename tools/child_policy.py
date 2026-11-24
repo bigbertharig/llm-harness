@@ -18,6 +18,7 @@ MAX_TOOL_RESULT_BYTES = 32_000
 MAX_TOTAL_TOOL_BYTES = 160_000
 MAX_ACTIVE_CHILDREN = 2
 MAX_MODEL_STEPS = 6
+MAX_FINALIZATION_STEPS = 1
 MAX_TOOL_ERRORS = 2
 SENSITIVE_QUERY = re.compile(r'(?i)(?:api[_-]?key|access[_-]?token|password|secret)\s*[:=]|'
                              r'(?:[A-Za-z]:\\|/home/[^\s]+/|/Users/[^\s]+/)')

@@ -76,9 +76,11 @@ append-only recovery journals; uncertain-write reconciliation policy; untrusted 
 central read/Git/research profiles; and a snapshot-pinned complete-document cursor driver. The active
 engine is independent of `research/external_harnesses/`.
 
-The current P1 work normalizes the MCP result matrix, defines queue-versus-steer ordering, and gives
-delayed jobs durable attempt/progress/terminal transitions with fail-closed recovery. Still open:
-the delayed-job supervisor/fixture, session-adapter integration, richer child cancellation/restart recovery, active session compaction,
+The P1 core normalizes the MCP result matrix, journals queue-versus-steer ordering through the session
+adapter, supervises delayed jobs with atomic receipts and exactly-once delivery, and records durable
+child failure, timeout, cancellation, and completion. Model calls retain served-route metadata and the
+six-step tool phase has one bounded tool-free finalization turn. Still open:
+active session compaction,
 the large-document map/reduce driver, limit boundary probes, repeated adversarial/live reliability,
 and the 3/5/10 true-context compaction campaign.
 

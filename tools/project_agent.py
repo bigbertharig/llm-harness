@@ -12,7 +12,7 @@ import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from child_policy import (MAX_MODEL_STEPS, MAX_TOOL_BATCH_CALLS, MAX_TOOL_ERRORS,
+from child_policy import (MAX_FINALIZATION_STEPS, MAX_MODEL_STEPS, MAX_TOOL_BATCH_CALLS, MAX_TOOL_ERRORS,
                           ToolBudget, validate_request)
 from harness_core import (DocumentDriverError, MCPResultError, RunRecorder, admit_evidence,
                           decide_terminal, get_tool_profile, next_document_request,
@@ -257,6 +257,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     answer = ''
     error = None
     started = time.monotonic()
+    max_model_steps = MAX_MODEL_STEPS + MAX_FINALIZATION_STEPS
 
     def digest_request(name: str, arguments: dict) -> str:
         normalized = json.dumps({'name': name, 'arguments': arguments}, sort_keys=True,
@@ -267,7 +268,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         nonlocal error, tools_enabled, truncation_repair_attempted
         decision = decide_terminal(answer=answer, finish_reason=finish_reason,
                                    repair_attempted=truncation_repair_attempted,
-                                   can_repair=step_number < MAX_MODEL_STEPS)
+                                   can_repair=step_number < max_model_steps)
         if decision.action == "repair":
             recorder.emit('retry.scheduled', payload={'reason': decision.reason})
             recorder.emit('retry.started', payload={})
@@ -283,7 +284,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             error = decision.reason
         return decision.action
 
-    for step_number in range(1, MAX_MODEL_STEPS + 1):
+    for step_number in range(1, max_model_steps + 1):
         if cancel_path and cancel_path.exists():
             error = 'cancelled'
             break
@@ -294,6 +295,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         model_step_id = f'model-{step_number}'
         recorder.emit('model.started', model_step_id=model_step_id,
                       payload={'route': route})
+        model_started = time.monotonic()
         try:
             packet = complete(gateway, route, messages, max_tokens, remaining,
                               os.environ.get('LLM_GATEWAY_API_KEY'),
@@ -307,7 +309,12 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         choice = packet['choices'][0]
         usage = packet.get('usage') if isinstance(packet.get('usage'), dict) else {}
         step = {'step': step_number, 'finish_reason': choice.get('finish_reason'),
-                'answer_bytes': len(answer.encode('utf-8')), 'usage': usage}
+                'answer_bytes': len(answer.encode('utf-8')), 'usage': usage,
+                'requested_route': route,
+                'served_model': packet.get('model') or expected_model,
+                'served_provider': packet.get('provider') or ready.get('provider'),
+                'provider_request_id': packet.get('id'),
+                'latency_ms': max(0, round((time.monotonic() - model_started) * 1000))}
         steps.append(step)
 
         if not tool_server or not tools_enabled:
@@ -352,7 +359,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                                        'argument_digest': digest_request(name, arguments)})
                 recorder.emit('tool.failed', tool_call_id=call_id,
                               payload={'reason': 'duplicate request'})
-            if any(not row['is_error'] for row in tool_calls) and step_number < MAX_MODEL_STEPS:
+            if any(not row['is_error'] for row in tool_calls) and step_number < max_model_steps:
                 tools_enabled = False
                 messages.append(packet['choices'][0]['message'] if native_requests else
                                 {'role': 'assistant', 'content': answer})
@@ -485,6 +492,9 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         finalization = ('TOOL BUDGET EXHAUSTED: Do not request another tool. Use the evidence already '
                         'returned and produce the final answer now. If it is insufficient, state the '
                         'specific limitation instead of requesting more evidence.')
+        finalization_grace = ('FINALIZATION STEP: The bounded tool phase is complete. Do not request '
+                              'another tool. Answer the original task now from the evidence already '
+                              'returned, and state any remaining limitation explicitly.')
         if native_requests:
             # Shared Gateway routes currently normalize exactly one proposal;
             # general routes may return a bounded batch. Preserve each call ID.
@@ -496,11 +506,12 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                                  'content': '\n'.join(row['_rendered'] for row in rows)[:160000]})
             for row in evidence_batch:
                 recorder.emit('tool.result_delivered', tool_call_id=row['_call_id'], payload={})
-            if budget_exhausted:
-                messages.append({'role': 'user', 'content': finalization})
+            if budget_exhausted or step_number >= MAX_MODEL_STEPS:
+                messages.append({'role': 'user', 'content':
+                                 finalization if budget_exhausted else finalization_grace})
         else:
-            if budget_exhausted:
-                feedback += '\n' + finalization
+            if budget_exhausted or step_number >= MAX_MODEL_STEPS:
+                feedback += '\n' + (finalization if budget_exhausted else finalization_grace)
             messages.append({'role': 'user', 'content': feedback})
             for row in evidence_batch:
                 recorder.emit('tool.result_delivered', tool_call_id=row['_call_id'], payload={})
@@ -510,7 +521,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         if post_delivery_error:
             error = post_delivery_error
             break
-        if budget_exhausted or step_number >= MAX_MODEL_STEPS - 1:
+        if budget_exhausted or step_number >= MAX_MODEL_STEPS:
             tools_enabled = False
     else:
         error = 'model step limit reached'
@@ -540,7 +551,9 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 'system_prompt_bytes': len(system.encode('utf-8')),
                 'user_envelope_bytes': len(messages[1]['content'].encode('utf-8')),
                 'output_limit_hit': any(row.get('finish_reason') == 'length' for row in steps),
-                'model_steps_max': MAX_MODEL_STEPS,
+                'model_tool_steps_max': MAX_MODEL_STEPS,
+                'model_finalization_steps_max': MAX_FINALIZATION_STEPS,
+                'model_steps_max': max_model_steps,
                 'tool_calls_max': budget.max_calls,
                 'tool_batch_compatibility_max': MAX_TOOL_BATCH_CALLS,
                 'tool_result_bytes_max': budget.receipt()['max_result_bytes'],
@@ -550,7 +563,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             },
             'answer': answer, 'error': error, 'duration_s': duration,
             'run': recorder.receipt(), 'evidence_provenance': external_provenance,
-            'model_steps': len(steps), 'max_model_steps': MAX_MODEL_STEPS,
+            'model_steps': len(steps), 'max_model_steps': max_model_steps,
+            'model_call_receipts': steps,
             'steps': steps, 'tool_calls': len(tool_calls),
             'tool_call_summary': tool_calls, 'tool_budget': budget.receipt(),
             'file_evidence_coverage': _file_evidence_coverage(tool_calls),

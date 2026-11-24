@@ -21,6 +21,15 @@ class RunRecorder:
         self.journal = EventJournal(journal_root, self.run_id) if journal_root is not None else None
         self.artifact_root = Path(journal_root) / "artifacts" / self.run_id if journal_root else None
 
+    @classmethod
+    def resume(cls, journal_root: Path | str, run_id: str) -> "RunRecorder":
+        """Reopen one durable run at its last validated event boundary."""
+        recorder = cls(journal_root, run_id)
+        events, state = recorder.journal.read()
+        recorder.events = events
+        recorder.state = state
+        return recorder
+
     def emit(self, event_type: str, *, payload: dict | None = None, **links: str) -> dict:
         event = make_event(run_id=self.run_id, sequence=self.state.next_sequence,
                            event_type=event_type, payload=payload, **links)

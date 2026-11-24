@@ -49,7 +49,31 @@ def decide_job_recovery(state: RunState, job_id: str) -> RecoveryDecision:
             "reconcile", f"job attempt {job.attempt} may still be running; do not resubmit",
             attempt=job.attempt)
     if job.state in {"succeeded", "failed", "cancelled", "timed_out"}:
+        tool = next((item for item in state.tools if item.identifier == job.tool_call_id), None)
+        actions = {
+            "executing": ("commit_tool_result", "terminal job receipt awaits tool commit"),
+            "committed": ("persist_result", "committed terminal job result is not persisted"),
+            "result_persisted": ("deliver_result", "persisted terminal job result awaits delivery"),
+            "result_delivered": ("done", "terminal job result was already delivered"),
+        }
+        if tool is None or tool.state not in actions:
+            return RecoveryDecision(
+                "fail", "terminal job is inconsistent with its linked tool state",
+                attempt=job.attempt)
+        action, reason = actions[tool.state]
         return RecoveryDecision(
-            "commit_tool_result", f"job attempt {job.attempt} has a durable terminal receipt",
-            attempt=job.attempt)
+            action, f"job attempt {job.attempt}: {reason}", attempt=job.attempt)
     return RecoveryDecision("fail", "job state is not recoverable")
+
+
+def decide_child_recovery(state: RunState, child_run_id: str) -> RecoveryDecision:
+    """Reconcile one active child or confirm its durable terminal outcome."""
+    child = next((item for item in state.children if item.identifier == child_run_id), None)
+    if child is None:
+        return RecoveryDecision("fail", "child run is absent from the durable journal")
+    if child.state == "active":
+        return RecoveryDecision(
+            "reconcile", "child may still be running; inspect its durable receipt before resubmission")
+    if child.state in {"completed", "failed", "cancelled", "timed_out"}:
+        return RecoveryDecision("done", f"child already reached terminal state {child.state}")
+    return RecoveryDecision("fail", "child state is not recoverable")

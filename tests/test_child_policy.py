@@ -63,6 +63,18 @@ class ChildPolicyTests(unittest.TestCase):
             with child_slot():
                 pass
 
+    def test_two_child_slots_run_concurrently_and_third_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {
+                'SUBAGENT_SLOT_DIR': temp, 'SUBAGENT_MAX_ACTIVE': '2'}):
+            with child_slot() as first:
+                with child_slot() as second:
+                    self.assertNotEqual(first, second)
+                    with self.assertRaises(RuntimeError):
+                        with child_slot():
+                            pass
+            with child_slot() as released:
+                self.assertIn(released, (0, 1))
+
 
 if __name__ == '__main__':
     unittest.main()
