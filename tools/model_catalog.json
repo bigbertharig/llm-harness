@@ -633,6 +633,10 @@
         "default": {
           "context_limit": 16384,
           "good_for": []
+        },
+        "interactive": {
+          "context_limit": 65536,
+          "good_for": []
         }
       },
       "status": "candidate"
@@ -721,7 +725,7 @@
     }
   },
   "schema": "harness-model-library/1",
-  "source_sha256": "1d24f1d4cf440d9927cc1d146b682bad3f09f99bff71e5bc5e6d12c81e9ee4b9",
+  "source_sha256": "a2bac605071a6a62c6c5d0210144b1f5216838ceb3dfdafc27f7e59da033f21c",
   "subagent_catalog": {
     "codex_luna": {
       "agent_types": [
@@ -743,26 +747,6 @@
       "evidence": "Pi Codex app-server model/list, observed 2026-11-12",
       "model": "gpt-5.6-terra",
       "provider": "codex",
-      "status": "candidate"
-    },
-    "ministral3_3b_separate": {
-      "agent_types": [
-        "coding",
-        "research"
-      ],
-      "evidence": "results/model_benchmark_records.jsonl: campaign_agent_contract-bounded-live-20261115a and campaign_ministral3_3b_agent_20260813_limit5_all",
-      "model": "ministral-3:3b",
-      "provider": "gateway_profile",
-      "status": "candidate"
-    },
-    "ministral3_8b_separate": {
-      "agent_types": [
-        "coding",
-        "research"
-      ],
-      "evidence": "results/model_benchmark_records.jsonl: campaign_ministral3_8b_agent_20260813_limit5_all",
-      "model": "ministral-3:8b",
-      "provider": "gateway_profile",
       "status": "candidate"
     },
     "nemotron74_shared_1060": {
@@ -857,6 +841,16 @@
         "mode": "gpu0-main-q4",
         "model": "qwen3.6:35b-a3b-xl"
       },
+      "status": "experimental"
+    },
+    "qwen38_27b_separate": {
+      "agent_types": [
+        "coding",
+        "research"
+      ],
+      "evidence": "results/MODEL_BENCHMARK_REFERENCE.md",
+      "model": "qwen3.8:27b",
+      "provider": "gateway_profile",
       "status": "experimental"
     }
   }
