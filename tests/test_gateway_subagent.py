@@ -283,6 +283,12 @@ class GatewaySubagentRequest(unittest.TestCase):
         project = {'engine': 'big-bertha-project-agent', 'engine_version': 1,
                    'answer': 'Review complete', 'error': None, 'duration_s': 0.1,
                    'tool_calls': 0, 'tool_call_summary': [],
+                   'model_call_receipts': [{'requested_route': child['route'],
+                                            'served_model': child['model'],
+                                            'served_provider': 'local',
+                                            'provider_request_id': 'request-1'}],
+                   'document_evidence_coverage': [{'path': 'design.md', 'complete_document': True}],
+                   'evidence_provenance': [{'source': 'repository'}],
                    'tool_budget': {'calls': 0}, 'tool_batch_limit': 4,
                    'model_steps': 1, 'max_model_steps': 6,
                    'tool_format_repair_attempted': False}
@@ -301,6 +307,9 @@ class GatewaySubagentRequest(unittest.TestCase):
         self.assertEqual(receipt['service_instance_id'], 'worker-load-1')
         self.assertEqual(receipt['reservation']['context_capacity'], 8192)
         self.assertEqual(receipt['admission']['mode'], 'shared_model')
+        self.assertEqual(receipt['model_call_receipts'][0]['provider_request_id'], 'request-1')
+        self.assertTrue(receipt['document_evidence_coverage'][0]['complete_document'])
+        self.assertEqual(receipt['evidence_provenance'][0]['source'], 'repository')
 
     def test_public_child_text_tool_request_is_executed_and_recorded(self):
         child = {'route': 'gpu-rig/child', 'gpu_ids': [2],
