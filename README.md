@@ -2,24 +2,12 @@
 
 Harness owns the agent loop and model-facing tooling: shared tools, prompts, context, compaction, sessions, delegation, execution limits and recovery. Its MCP tools and bounded project-agent loop are active; the loop currently requires Gateway-ready routes. A public embedding interface, direct-provider execution and generic engine/run adapters are Planned. Gateway owns conversations and account connections; Orchestration owns physical admission and runtime lifecycle.
 
-## Project map
+## Product boundary
 
-The [cross-repo contract](https://github.com/bigbertharig/benchmarking/blob/master/CROSS_REPO_CONTRACT.md) owns the product division. These are accepted
-responsibilities; the [cleanup plan](https://github.com/bigbertharig/benchmarking/blob/master/REPOSITORY_CLEANUP_PLAN.md) separates active code from pending migration.
-Each product must support a useful standalone workflow with optional integrations.
-
-| Repository | Responsibility |
-|---|---|
-| [llm-gateway](https://github.com/bigbertharig/llm-gateway) | Dashboard, conversations, remote access, cloud accounts/connectors, connection configuration, operator approvals and work coordination. |
-| [llm-harness](https://github.com/bigbertharig/llm-harness) | Agent loop, model-facing tools, bounded execution, context, delegation, execution journals and receipts. |
-| [llm_orchestration](https://github.com/bigbertharig/llm_orchestration) | Local executable model profiles, hardware discovery, physical admission, reservations, runtime lifecycle and observation. |
-| [benchmarking](https://github.com/bigbertharig/benchmarking) | Evaluation tasks, comparative experiments, measurements, scores, result history and published model evidence. |
-
-Gateway coordinates the connected deployment. Direct clients and standalone callers are
-part of the accepted design. Product state stays with its owner; versioned requests,
-events, receipts and optional artifact imports connect the products. Private site
-configuration supplies addresses, credentials, model files and mounts. The current
-checkout dependencies are tracked in the cleanup plan, not a supported installation contract.
+Harness owns bounded agent execution, model-facing tools, context management, delegation
+and execution journals/receipts. Its caller supplies the objective, configured provider
+and effective grants. Tool wrappers call the owning service for account, conversation or
+hardware operations and do not edit that service's private state.
 
 ## Read this repo
 
@@ -165,3 +153,13 @@ hardware scheduler.
   benchmarking roles. A benchmark model ID used in a test plan is not automatically a ready gateway route.
 - This repo is public: do not add keys, hostnames, network inventory, or private project notes.
 - Keep upstream code out of this repo until the fork exists; record what is used in `UPSTREAM.md`.
+
+## Implementation status
+
+The following cleanup is Planned until its tests and receipts are recorded:
+
+- Package public tool and engine entry points for external projects.
+- Add direct-provider execution while retaining Gateway ready-only validation in its adapter.
+- Freeze run submission/input/cancel/resume events and receipts with conformance fixtures.
+- Keep deterministic tool/engine regressions here; move reusable comparative campaigns to Benchmarking.
+- Test standalone engine and MCP tools without another repository's checkout.

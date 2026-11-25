@@ -54,7 +54,7 @@ checks the call against the grant and the owning service authorizes the effect.
 Freeze schemas, version negotiation, authenticated transport, error categories and producer/
 consumer fixtures before implementing a remote adapter. The first milestone remains an
 in-process adapter and fake engine. This document defines behavior, not new HTTP routes.
-See the [shared ownership rules](https://github.com/bigbertharig/benchmarking/blob/master/CROSS_REPO_CONTRACT.md) and [cleanup plan](https://github.com/bigbertharig/benchmarking/blob/master/REPOSITORY_CLEANUP_PLAN.md).
+See the [product boundary](../README.md#product-boundary) and [implementation status](../README.md#implementation-status).
 
 ## Versioned inputs
 
@@ -117,5 +117,4 @@ implementation target. Existing loop journals and receipts do not establish that
 boundary. `tools/project_agent.py` currently requires Gateway ready-roster discovery
 even for a tool-free task. A standalone provider adapter and a public embedding entry
 point must support another project without Gateway, while the optional Gateway
-adapter retains its ready-only checks. See the [source audit and acceptance
-criteria](https://github.com/bigbertharig/benchmarking/blob/master/reports/STANDALONE_ISOLATION_AUDIT_2026-11-24.md).
+adapter retains its ready-only checks. See the [implementation status](../README.md#implementation-status).

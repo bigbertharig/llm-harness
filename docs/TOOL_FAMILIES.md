@@ -14,7 +14,7 @@ network calls do not all require a Gateway relay. Gateway owns its remote ingres
 connection setup, while Harness owns its tool clients. Distribute tools as installable
 entry points or configured services; sibling checkout paths are deployment debt.
 
-See the [cross-repo contract](https://github.com/bigbertharig/benchmarking/blob/master/CROSS_REPO_CONTRACT.md) and [cleanup plan](https://github.com/bigbertharig/benchmarking/blob/master/REPOSITORY_CLEANUP_PLAN.md).
+See the [product boundary](../README.md#product-boundary) and [implementation status](../README.md#implementation-status).
 
 The Harness registry (`tools/tool_registry.json`) is the source of truth for tool identity, purpose, ownership, origin, and current bundle. `category` describes the job (search, local information, delegation, external, diagnostics); `origin` describes whether the capability is a rig tool or reaches another service; `family` is its current toolkit; `source_bundle` preserves where it began. The top-level `bundles` list includes provider toolkits even before their native tools have been audited. These fields do not grant permission. The generated dashboard catalog is a projection, and Gateway still chooses which surfaces a Chat or Coding turn may use.
 
