@@ -58,33 +58,20 @@ class ProjectAgentTests(unittest.TestCase):
         self.assertEqual(raised.exception.retry_after_s, 2.5)
         self.assertTrue(raised.exception.retryable)
 
-    def test_completion_sends_and_receipts_explicit_sampling_profile(self):
+    def test_completion_inherits_runtime_generation_settings(self):
         response = BytesIO(json.dumps(packet('answer')).encode())
-        official = {'temperature': 0.7, 'top_p': 0.8, 'top_k': 20,
-                    'min_p': 0.0, 'presence_penalty': 1.5,
-                    'repetition_penalty': 1.0}
         with patch('project_agent.urlopen', return_value=response) as opened:
-            result = project_agent._completion(
-                'http://gateway', 'gpu-rig/test', [{'role': 'user', 'content': 'task'}],
-                128, 10, None, [], sampling=official)
+            project_agent._completion('http://gateway', 'gpu-rig/test',
+                                      [{'role': 'user', 'content': 'task'}], 128, 10)
         body = json.loads(opened.call_args.args[0].data)
-        self.assertEqual(result['choices'][0]['message']['content'], 'answer')
-        self.assertEqual({key: body[key] for key in official}, official)
-
+        self.assertEqual(set(body), {'model', 'messages', 'max_tokens'})
+        self.assertEqual(body['max_tokens'], 128)
         with patch('project_agent.fetch_ready_roster', return_value=READY):
             receipt = project_agent.run_agent(
                 gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
-                prompt='answer', agent_type='research', sampling=official,
-                complete=lambda *_: packet('done'))
-        self.assertEqual(receipt['sampling'], official)
-
-    def test_sampling_profile_rejects_unknown_and_out_of_range_values(self):
-        with self.assertRaisesRegex(ValueError, 'unsupported'):
-            project_agent._validated_sampling({'seed': 1})
-        with self.assertRaisesRegex(ValueError, 'temperature'):
-            project_agent._validated_sampling({'temperature': 2.1})
-        with self.assertRaisesRegex(ValueError, 'top_k'):
-            project_agent._validated_sampling({'top_k': 20.0})
+                prompt='answer', agent_type='research', complete=lambda *_: packet('done'))
+        self.assertEqual(receipt['generation_settings_source'], 'runtime_profile')
+        self.assertNotIn('sampling', receipt)
 
     def test_transient_provider_failure_retries_once_without_spending_logical_step(self):
         calls = []

@@ -389,6 +389,56 @@ class GatewaySubagentRequest(unittest.TestCase):
             'http://127.0.0.1:8080', 'cloud/codex', child['route'],
             service_instance_id='load-1', reservation_id='reserve-1')
 
+    def test_mcp_propagates_child_timeout_cancellation_and_release_failure(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        import runpy
+        server = Path(__file__).resolve().parents[1] / 'tools/gateway_subagent_mcp.py'
+        child = {'route': 'gpu-rig/child', 'gpu_ids': [2], 'model': 'test-model',
+                 'context_length': 8192, 'ephemeral': True, 'service_instance_id': 'load-1',
+                 'reservation': {'reservation_id': 'reserve-1', 'service_instance_id': 'load-1'},
+                 'admission': {'mode': 'shared_model', 'service_instance_id': 'load-1',
+                               'reservation_id': 'reserve-1'}}
+        ready = {'id': child['route'], 'gpu_ids': [2], 'model': child['model']}
+        for failure, release_failure in [('timeout', False), ('cancelled', False), (None, True)]:
+            with self.subTest(failure=failure, release_failure=release_failure):
+                project = {'engine': 'big-bertha-project-agent', 'engine_version': 2,
+                           'answer': '' if failure else 'Verified result', 'error': failure,
+                           'duration_s': 0.1, 'tool_calls': 0, 'tool_call_summary': [],
+                           'tool_budget': {'calls': 0}, 'tool_batch_limit': 4,
+                           'model_steps': 1, 'max_model_steps': 6,
+                           'tool_format_repair_attempted': False}
+                request = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {
+                    'name': 'delegate_task', 'arguments': {'agent_type': 'coding', 'task': 'Check status'}}}
+                output = StringIO()
+                with tempfile.TemporaryDirectory() as temp, \
+                     patch('gateway_subagent.fetch_ready_roster', return_value={'data': [ready]}), \
+                     patch('gateway_subagent.resolve_child', return_value=child), \
+                     patch('gateway_subagent.run_project_agent', return_value=project) as run, \
+                     patch('gateway_subagent.release_child', return_value={'released': True},
+                           side_effect=RuntimeError('release unavailable') if release_failure else None) as release, \
+                     patch('sys.argv', [str(server), '--cloud-parent', '--receipt-dir', temp]), \
+                     patch('sys.stdin', StringIO(json.dumps(request) + '\n')), \
+                     patch('signal.signal'), redirect_stdout(output):
+                    runpy.run_path(str(server), run_name='__main__')
+                    response = json.loads(output.getvalue())['result']
+                    receipt = response['structuredContent']
+                    self.assertTrue(response['isError'])
+                    self.assertEqual(receipt['exit_code'], 1)
+                    self.assertEqual(receipt['released'], not release_failure)
+                    if failure:
+                        self.assertEqual(receipt['error'], failure)
+                        self.assertEqual(receipt['answer'], '')
+                    else:
+                        self.assertIn('child release failed', receipt['error'])
+                    saved = list(Path(temp).glob('*/summary.json'))
+                    self.assertEqual(len(saved), 1)
+                    disk = json.loads(saved[0].read_text())
+                    self.assertEqual(disk['error'], receipt['error'])
+                    self.assertEqual(disk['exit_code'], 1)
+                    run.assert_called_once()
+                    release.assert_called_once()
+
     def test_mcp_launch_arguments_expose_simple_tool(self):
         server = Path(__file__).resolve().parents[1] / 'tools/gateway_subagent_mcp.py'
         with tempfile.TemporaryDirectory() as temp:

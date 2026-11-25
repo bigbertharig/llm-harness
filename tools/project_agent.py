@@ -45,14 +45,12 @@ class AgentLoopError(RuntimeError):
 
 def _completion(gateway: str, route: str, messages: list[dict], max_tokens: int,
                 timeout: float, api_key: str | None = None,
-                tools: list[dict] | None = None,
-                sampling: dict | None = None) -> dict:
+                tools: list[dict] | None = None) -> dict:
     headers = {'Accept': 'application/json', 'Content-Type': 'application/json',
                'X-Require-Ready': 'true'}
     if api_key:
         headers['Authorization'] = 'Bearer ' + api_key
-    body = {'model': route, 'messages': messages, 'max_tokens': max_tokens,
-            **(sampling or {'temperature': 0.0})}
+    body = {'model': route, 'messages': messages, 'max_tokens': max_tokens}
     if tools:
         body['tools'] = tools
     body = json.dumps(body).encode()
@@ -78,29 +76,6 @@ def _completion(gateway: str, route: str, messages: list[dict], max_tokens: int,
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
         raise AgentLoopError('Gateway completion returned no choice')
     return packet
-
-
-def _validated_sampling(sampling: dict | None) -> dict:
-    values = {'temperature': 0.0} if sampling is None else dict(sampling)
-    allowed = {'temperature', 'top_p', 'top_k', 'min_p',
-               'presence_penalty', 'repetition_penalty'}
-    if set(values) - allowed:
-        raise ValueError('sampling contains unsupported fields')
-    bounds = {
-        'temperature': (0.0, 2.0), 'top_p': (0.0, 1.0),
-        'top_k': (0, 1000), 'min_p': (0.0, 1.0),
-        'presence_penalty': (-2.0, 2.0), 'repetition_penalty': (0.0, 2.0),
-    }
-    for name, value in values.items():
-        if name == 'top_k':
-            if type(value) is not int:
-                raise ValueError('top_k must be an integer')
-        elif type(value) not in (int, float):
-            raise ValueError(f'{name} must be numeric')
-        low, high = bounds[name]
-        if not low <= value <= high:
-            raise ValueError(f'{name} must be between {low} and {high}')
-    return values
 
 
 def _message_text(packet: dict) -> str:
@@ -244,7 +219,6 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
               conversation_id: str | None = None,
               cancel_path: Path | None = None,
               evidence_blocks: list[dict] | None = None,
-              sampling: dict | None = None,
               journal_root: Path | None = None,
               retry_wait=time.sleep,
               complete=_completion) -> dict:
@@ -255,7 +229,6 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         raise ValueError(f'timeout_s must be between 1 and {MAX_AGENT_TIMEOUT_SECONDS}')
     if type(max_tool_calls) is not int or not 1 <= max_tool_calls <= 12:
         raise ValueError('max_tool_calls must be between 1 and 12')
-    sampling = _validated_sampling(sampling)
     if tool_profile == 'none':
         if tool_server is not None:
             raise ValueError('tool-free run cannot have a tool server')
@@ -349,8 +322,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             completion_args = (gateway, route, messages, max_tokens, remaining,
                                os.environ.get('LLM_GATEWAY_API_KEY'),
                                advertised_tools if tools_enabled else [])
-            packet = (complete(*completion_args, sampling=sampling)
-                      if complete is _completion else complete(*completion_args))
+            packet = complete(*completion_args)
         except Exception as exc:
             failure = {'attempt': step_number, 'finish_reason': 'provider_error',
                        'answer_bytes': 0, 'usage': {}, 'requested_route': route,
@@ -622,7 +594,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     return {'engine': 'big-bertha-project-agent', 'engine_version': 2,
             'task_contract_version': CONTRACT_VERSION,
             'route': route, 'model': expected_model, 'tool_profile': tool_profile,
-            'sampling': sampling,
+            'generation_settings_source': 'runtime_profile',
             'limits': {
                 'route_context_tokens': ready.get('context_length'),
                 'route_output_tokens': output_limit,
@@ -671,20 +643,9 @@ def main() -> int:
     parser.add_argument('--max-tokens', type=int, default=1024)
     parser.add_argument('--timeout', type=int, default=180)
     parser.add_argument('--max-tool-calls', type=int, default=12)
-    parser.add_argument('--temperature', type=float)
-    parser.add_argument('--top-p', type=float)
-    parser.add_argument('--top-k', type=int)
-    parser.add_argument('--min-p', type=float)
-    parser.add_argument('--presence-penalty', type=float)
-    parser.add_argument('--repetition-penalty', type=float)
     parser.add_argument('--out', required=True, type=Path)
     parser.add_argument('prompt')
     args = parser.parse_args()
-    sampling = {name: value for name, value in {
-        'temperature': args.temperature, 'top_p': args.top_p, 'top_k': args.top_k,
-        'min_p': args.min_p, 'presence_penalty': args.presence_penalty,
-        'repetition_penalty': args.repetition_penalty,
-    }.items() if value is not None} or None
     server = None
     if args.tool_profile == 'workspace_read':
         if args.workspace_root is None:
@@ -707,7 +668,6 @@ def main() -> int:
                         tool_profile=args.tool_profile, tool_server=server,
                         workspace_root=args.workspace_root, max_tokens=args.max_tokens,
                         timeout_s=args.timeout, max_tool_calls=args.max_tool_calls,
-                        sampling=sampling,
                         cancel_path=args.out.with_suffix('.cancel'),
                         journal_root=args.out.parent / (args.out.stem + '-journal'))
     args.out.parent.mkdir(parents=True, exist_ok=True)

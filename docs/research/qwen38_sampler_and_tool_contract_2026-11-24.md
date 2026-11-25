@@ -35,8 +35,10 @@ therefore improved action throughput, while judgment and evidence prioritization
 
 ## Harness changes retained
 
-- Sampling is an explicit, validated, receipt-visible run input. The default remains temperature zero,
-  so other models do not change silently.
+- The trial's per-run sampling controls were removed after the ownership review on 2026-11-24.
+  Benchmarking now owns the Qwen interactive sampler in its model-library startup profile. Harness
+  inherits runtime defaults for every local route and records that source; previous temperature-zero
+  Harness measurements remain historical baselines.
 - Task contract v4 allows at most four independent native calls per turn. The text bridge remains one
   strict complete JSON call.
 - Workspace guidance prioritizes named tests, source paths, and symbols over broad documentation

@@ -214,7 +214,6 @@ def _release_ephemeral(gateway: str, parent_id: str, child: dict) -> dict:
 def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gateway: str,
               max_tokens: int = 1536, timeout_s: int = 300,
               max_tool_calls: int = 12,
-              sampling: dict | None = None,
               candidate_id: str | None = None, tool_profile: str = 'none',
               workspace_root: Path | None = None, min_context: int = 4096,
               context_tokens: int | None = None, worker_strategy: str = 'auto') -> dict:
@@ -286,7 +285,6 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
             tool_server=tool_bridge, workspace_root=workspace_root,
             max_tokens=max_tokens, timeout_s=timeout_s,
             max_tool_calls=max_tool_calls,
-            sampling=sampling,
             cancel_path=out.with_suffix('.cancel'), journal_root=out / 'journal')
         (out / 'project_agent.json').write_text(json.dumps(project, indent=2) + '\n')
         answer, error = project['answer'], project['error']
@@ -324,7 +322,7 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
                    'model_call_receipts': project.get('model_call_receipts', []),
                    'tool_format_repair_attempted': project['tool_format_repair_attempted'],
                    'truncation_repair_attempted': project.get('truncation_repair_attempted', False),
-                   'sampling': project.get('sampling'),
+                   'generation_settings_source': project.get('generation_settings_source'),
                    'max_tokens': max_tokens, 'timeout_s': timeout_s,
                    'duration_s': project['duration_s'], 'exit_code': exit_code,
                    'roster_stable': stable, 'answer': answer, 'error': error}
@@ -336,6 +334,7 @@ def run_child(*, parent_id: str, agent_type: str, prompt: str, out: Path, gatewa
                 released = True
             except Exception as exc:
                 receipt['released'] = False
+                receipt['exit_code'] = 1
                 receipt['error'] = (receipt['error'] or '') + f' child release failed: {type(exc).__name__}: {exc}'
         (out / 'summary.json').write_text(json.dumps(receipt, indent=2))
         return receipt
@@ -358,29 +357,17 @@ def main() -> int:
     parser.add_argument('--max-tokens', type=int, default=1536)
     parser.add_argument('--timeout', type=int, default=300)
     parser.add_argument('--max-tool-calls', type=int, default=12)
-    parser.add_argument('--temperature', type=float)
-    parser.add_argument('--top-p', type=float)
-    parser.add_argument('--top-k', type=int)
-    parser.add_argument('--min-p', type=float)
-    parser.add_argument('--presence-penalty', type=float)
-    parser.add_argument('--repetition-penalty', type=float)
     parser.add_argument('--tool-profile', choices=['none', 'public_research', 'workspace_read', 'workspace_git'], default='none')
     parser.add_argument('--workspace-root', type=Path)
     parser.add_argument('--min-context', type=int, default=4096)
     parser.add_argument('--worker-strategy', choices=['auto', 'shared_model', 'separate_model'], default='auto')
     parser.add_argument('prompt')
     args = parser.parse_args()
-    sampling = {name: value for name, value in {
-        'temperature': args.temperature, 'top_p': args.top_p, 'top_k': args.top_k,
-        'min_p': args.min_p, 'presence_penalty': args.presence_penalty,
-        'repetition_penalty': args.repetition_penalty,
-    }.items() if value is not None} or None
     result = run_child(parent_id=args.parent_route, agent_type=args.agent_type,
                        prompt=args.prompt, out=args.out, gateway=args.gateway,
                        max_tokens=args.max_tokens, timeout_s=args.timeout,
                        max_tool_calls=args.max_tool_calls,
-                       sampling=sampling,
-                       candidate_id=args.candidate_id, tool_profile=args.tool_profile,
+                                  candidate_id=args.candidate_id, tool_profile=args.tool_profile,
                        workspace_root=args.workspace_root, min_context=args.min_context,
                        worker_strategy=args.worker_strategy)
     print(json.dumps(result))

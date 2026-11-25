@@ -81,11 +81,20 @@ events and a terminal receipt.
 - P2/P3: engine-adapter conformance, repeated live reliability, security adversaries, endurance, and
   pinned external subsets.
 
-Generation settings are explicit experimental inputs, not hidden model defaults. The project agent
-accepts a bounded sampler vocabulary, sends it unchanged to the ready route, and records the effective
-profile in the run receipt. Task contract v4 also permits up to four independent native tool calls per
-turn while keeping the text-call fallback to one strict JSON object; named tests, source paths, and
-symbols take priority over broad documentation searches.
+Benchmarking owns model-specific generation settings and publishes them in the model library's
+runtime startup profile. Gateway passes the profile to Orchestration; the project agent inherits
+those runtime defaults and sends only its task output budget. Harness has no sampler CLI or per-run
+sampler overrides. Receipts identify `generation_settings_source=runtime_profile`; they do not claim
+to have measured effective sampler values. Benchmarking experiments compare settings before updating
+a profile. Task contract v4 permits up to four independent native tool calls per turn while keeping
+the text-call fallback to one strict JSON object; named tests, source paths, and symbols take priority
+over broad documentation searches.
+
+The P1 parent-boundary regression runs the real delegation MCP adapter and child wrapper with controlled
+child outcomes. Timeout and cancellation produce one error response and one saved failure receipt,
+release the child reservation once, and never retry or invent an answer. A reservation-release failure
+also sets a nonzero receipt exit code. Active-agent restart integration and corrected-fact/compaction
+retention remain separate pending gates.
 
 No new general-purpose tool enters the active catalog without a named failure class, deterministic
 contract test, receipt fields, permission owner, and rollback/recovery behavior.

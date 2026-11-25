@@ -725,7 +725,7 @@
     }
   },
   "schema": "harness-model-library/1",
-  "source_sha256": "dbc79c8f53639b61140df4c46f84a282c3665732bfde2ca61b93d5663b3b2599",
+  "source_sha256": "2ee8308ce3f544b008814180144fda5b01a2478df4dc4554c16964b1cd5d170f",
   "subagent_catalog": {
     "codex_luna": {
       "agent_types": [
