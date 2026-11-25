@@ -26,15 +26,17 @@ tool execution, recovery, and terminal classification are deterministic project-
 8. **Policies** — retry, compaction, delegation, cancellation, and finalization are small replaceable
    policies tested with fake providers and clocks.
 
-The project-owned reducer and broker are the default engine. The versioned engine adapter connects
+The project-owned reducer and broker are the default engine. The Planned versioned engine adapter will connect
 additional harnesses through the same task/event/receipt boundary. Provider adapters normalize model
 and MCP protocols inside an engine; an engine adapter connects a complete bounded agent implementation
-to Gateway while preserving the project's authorization boundary. See
+to an embedding caller while preserving the project's authorization boundary. See
 [Harness engine adapters](ENGINE_ADAPTERS.md).
 
 Gateway owns conversations, operator policy, and requested work. Orchestration alone owns hardware
-admission and monitoring. Harness consumes a ready route and explicit grants, then returns auditable
-events and a terminal receipt.
+admission and monitoring. Harness consumes explicit provider capabilities and grants, then returns auditable
+events and a terminal receipt. The active loop requires a Gateway ready route; direct-provider
+execution and the public embedding contract are Planned. Harness owns execution journals;
+Gateway owns conversation history and projects events through their public interface.
 
 ## Implementation sequence
 
@@ -81,12 +83,14 @@ events and a terminal receipt.
 - P2/P3: engine-adapter conformance, repeated live reliability, security adversaries, endurance, and
   pinned external subsets.
 
-Benchmarking owns model-specific generation settings and publishes them in the model library's
-runtime startup profile. Gateway passes the profile to Orchestration; the project agent inherits
+In the active integrated deployment, Benchmarking publishes measured model-specific generation
+settings in the model library's runtime startup profile. Gateway passes the profile to Orchestration; the project agent inherits
 those runtime defaults and sends only its task output budget. Harness has no sampler CLI or per-run
 sampler overrides. Receipts identify `generation_settings_source=runtime_profile`; they do not claim
 to have measured effective sampler values. Benchmarking experiments compare settings before updating
-a profile. Task contract v4 permits up to four independent native tool calls per turn while keeping
+a profile. In the Planned standalone path, Orchestration owns explicit local runtime
+configuration and direct providers expose their configured defaults; receipts preserve the source.
+Harness does not add hidden sampler policy. Task contract v4 permits up to four independent native tool calls per turn while keeping
 the text-call fallback to one strict JSON object; named tests, source paths, and symbols take priority
 over broad documentation searches.
 

@@ -1,26 +1,25 @@
 # llm-harness
 
-Harness builds and tests the model-use layer around Gateway routes: shared tools, prompts, context, compaction, sessions, delegation, limits, and recovery. Its MCP adapters and test suites run today. Gateway Manager coordinates model choice and some placement; the rig enforces admission and hardware rules. The project-owned bounded agent loop now drives delegated local children; durable multi-turn sessions and compaction remain under construction.
+Harness owns the agent loop and model-facing tooling: shared tools, prompts, context, compaction, sessions, delegation, execution limits and recovery. Its MCP tools and bounded project-agent loop are active; the loop currently requires Gateway-ready routes. A public embedding interface, direct-provider execution and generic engine/run adapters are Planned. Gateway owns conversations and account connections; Orchestration owns physical admission and runtime lifecycle.
 
 ## Project map
 
-Big Bertha runs across a Pi control host, an isolated GPU rig, and optional CPU workers. Four repositories divide the system's work:
+The [cross-repo contract](https://github.com/bigbertharig/benchmarking/blob/master/CROSS_REPO_CONTRACT.md) owns the product division. These are accepted
+responsibilities; the [cleanup plan](https://github.com/bigbertharig/benchmarking/blob/master/REPOSITORY_CLEANUP_PLAN.md) separates active code from pending migration.
+Each product must support a useful standalone workflow with optional integrations.
 
 | Repository | Responsibility |
 |---|---|
-| [llm-gateway](https://github.com/bigbertharig/llm-gateway) | Serves the dashboard, conversations, model API, tool policy, and work coordination. Its Manager also coordinates some model placement and loading. |
-| [llm_orchestration](https://github.com/bigbertharig/llm_orchestration) | Observes and controls rig hardware, enforces admission and reservations, and manages model runtimes. |
-| [benchmarking](https://github.com/bigbertharig/benchmarking) | Measures models and runtimes; publishes the model library, roles, load recipes, evaluation suites, and results. |
-| [llm-harness](https://github.com/bigbertharig/llm-harness) | Builds the project-owned tool and agent layer. External harnesses supply comparison evidence and features to adapt. |
+| [llm-gateway](https://github.com/bigbertharig/llm-gateway) | Dashboard, conversations, remote access, cloud accounts/connectors, connection configuration, operator approvals and work coordination. |
+| [llm-harness](https://github.com/bigbertharig/llm-harness) | Agent loop, model-facing tools, bounded execution, context, delegation, execution journals and receipts. |
+| [llm_orchestration](https://github.com/bigbertharig/llm_orchestration) | Local executable model profiles, hardware discovery, physical admission, reservations, runtime lifecycle and observation. |
+| [benchmarking](https://github.com/bigbertharig/benchmarking) | Evaluation tasks, comparative experiments, measurements, scores, result history and published model evidence. |
 
-Benchmarking publishes a validated model library. Gateway imports it, serves model routes, and manages dashboard work. Harness supplies reviewed tool schemas and tests model interactions through Gateway routes. Orchestration enforces rig hardware rules and runs admitted model services. [The work-organization guide](https://github.com/bigbertharig/llm-gateway/blob/main/docs/WORK_ORGANIZATION_DIRECTION.md) tracks the remaining Manager-to-Orchestration migration.
-
-The project-owned engine is the default. The versioned engine contract defines a Gateway task envelope,
-ready route, and fixed grants as inputs, with canonical events and a terminal receipt as outputs.
-Additional harness engines integrate through that boundary while Gateway retains conversation state and policy and the
-Harness retains its tool broker. See [Harness engine adapters](docs/ENGINE_ADAPTERS.md).
-
-Private site configuration supplies host addresses, credentials, model files, and mounts. The published examples use role placeholders. For another card mix, run a hardware survey and validate fit, context, concurrency, and speed before offering a load recipe. The [cross-repo contract](https://github.com/bigbertharig/benchmarking/blob/main/CROSS_REPO_CONTRACT.md) defines the shared interfaces and the [porting guide](https://github.com/bigbertharig/llm-gateway/blob/main/docs/PORTABILITY.md) covers installation-specific inputs.
+Gateway coordinates the connected deployment. Direct clients and standalone callers are
+part of the accepted design. Product state stays with its owner; versioned requests,
+events, receipts and optional artifact imports connect the products. Private site
+configuration supplies addresses, credentials, model files and mounts. The current
+checkout dependencies are tracked in the cleanup plan, not a supported installation contract.
 
 ## Read this repo
 

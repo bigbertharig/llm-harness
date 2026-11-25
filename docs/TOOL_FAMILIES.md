@@ -1,5 +1,21 @@
 # Shared tool families
 
+## Ownership and distribution decision
+
+Harness owns model-facing schemas, reusable tool behavior and bounded execution. The
+controlled service owns its operation: Gateway owns account/conversation mutations and
+credentials; Orchestration owns hardware/runtime effects. A wrapper calls an authenticated
+public operation and preserves its receipt. It does not edit another product's private
+store. This is the accepted rule; existing script/store coupling is migration work.
+
+Tools are independently usable through MCP. Standalone callers supply explicit grants and
+provider/connector configuration; Chat/Coding surface names are Gateway policy. Product
+network calls do not all require a Gateway relay. Gateway owns its remote ingress and
+connection setup, while Harness owns its tool clients. Distribute tools as installable
+entry points or configured services; sibling checkout paths are deployment debt.
+
+See the [cross-repo contract](https://github.com/bigbertharig/benchmarking/blob/master/CROSS_REPO_CONTRACT.md) and [cleanup plan](https://github.com/bigbertharig/benchmarking/blob/master/REPOSITORY_CLEANUP_PLAN.md).
+
 The Harness registry (`tools/tool_registry.json`) is the source of truth for tool identity, purpose, ownership, origin, and current bundle. `category` describes the job (search, local information, delegation, external, diagnostics); `origin` describes whether the capability is a rig tool or reaches another service; `family` is its current toolkit; `source_bundle` preserves where it began. The top-level `bundles` list includes provider toolkits even before their native tools have been audited. These fields do not grant permission. The generated dashboard catalog is a projection, and Gateway still chooses which surfaces a Chat or Coding turn may use.
 
 | Family | Current surfaces | Availability |

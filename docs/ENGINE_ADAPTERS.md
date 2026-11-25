@@ -1,5 +1,9 @@
 # Harness engine adapters
 
+Status: **Planned contract**, accepted 2026-11-24. Active loop journals, receipts and MCP
+adapters are documented in [the framework](HARNESS_FRAMEWORK.md); they do not establish
+a completed generic run/engine service.
+
 The project-owned Harness is the default model-use engine. The engine contract allows a site to add
 another harness without coupling Gateway to that implementation or transferring tool, policy, or
 hardware authority. The in-process `project_agent.py` adapter and conformance runner are the first
@@ -7,14 +11,16 @@ implementation milestone.
 
 ## Boundary
 
-Gateway owns the conversation, authenticated operator action, objective, assignment, effective grants,
-and choice of a currently ready route. Orchestration owns admission and hardware state. The Harness
+The embedding caller supplies the objective, provider/model selection, effective grants and
+permission authority. Gateway supplies these for its conversations and owns authenticated operator
+actions, account connectors and conversation history. Standalone callers supply their own
+configuration. Orchestration owns local runtime admission and hardware state. The Harness
 boundary owns provenance, tool validation and execution, budgets, ordered events, recovery semantics,
 and terminal receipts. An engine decides how to reason within that envelope.
 
 ```text
-Gateway
-  task envelope + ready route + effective grants
+Gateway or standalone embedding caller
+  task envelope + explicit provider capabilities + effective grants
       -> Harness engine adapter
          engine reasoning <-> canonical model/provider adapter
          tool proposals ----> project-owned broker and approval checks
@@ -26,18 +32,44 @@ ability to add tools to its grant. Uploaded files, repository text, web pages, m
 remain typed untrusted evidence. Instructions found in them cannot replace the operator objective or
 change policy.
 
+## Public run and tool interfaces
+
+Harness owns the public run contract. Gateway is a consumer and may expose an authenticated
+proxy for its clients. Submission, additional input, cancellation and reconnect/resume use
+stable run, attempt and request identities. Duplicate submissions reconcile to the existing
+attempt; an interrupted write never becomes a blind retry. Events carry sequence/causal IDs;
+resume uses a validated cursor/checkpoint. Each attempt has one terminal receipt. New input
+and cancellation acknowledgements must distinguish accepted, pending and terminal state.
+
+Harness inference adapters support configured providers. The Gateway adapter retains
+ready-roster identity validation and ready-only calls. Direct providers supply explicit
+identity, context/output limits and capabilities without rig discovery. Missing capabilities
+produce a typed unsupported outcome. Model credentials stay in the provider/connector.
+
+MCP tools can run independently of the Harness engine. A tool calls the owning service's
+public operation for accounts, conversations or hardware; it does not read or mutate that
+service's private files. Gateway records approvals in the integrated installation; Harness
+checks the call against the grant and the owning service authorizes the effect.
+
+Freeze schemas, version negotiation, authenticated transport, error categories and producer/
+consumer fixtures before implementing a remote adapter. The first milestone remains an
+in-process adapter and fake engine. This document defines behavior, not new HTTP routes.
+See the [shared ownership rules](https://github.com/bigbertharig/benchmarking/blob/master/CROSS_REPO_CONTRACT.md) and [cleanup plan](https://github.com/bigbertharig/benchmarking/blob/master/REPOSITORY_CLEANUP_PLAN.md).
+
 ## Versioned inputs
 
 The launch envelope should contain:
 
-- contract and engine-adapter versions plus run, task, conversation, and attempt IDs;
+- contract and engine-adapter versions plus run, task and attempt IDs; an explicit
+  caller-owned conversation/session reference when the task belongs to one;
 - operator objective and system-owned operating rules, kept separate from untrusted evidence;
-- selected route identity, canonical model identity, served context/output limits, and capability facts;
+- provider/model identity, context/output limits and capability facts; route identity and
+  observed readiness for the Gateway adapter; optional Benchmarking evidence identity;
 - explicit tool/profile grants, approvals, call/byte/turn/time budgets, and cancellation handle;
 - journal checkpoint or recovery instruction and digest-bound evidence/artifact references.
 
-The adapter must reject an unknown major version, a missing required identity, an unready/mismatched
-route, an unsupported recovery state, or a grant it cannot enforce. It may negotiate a narrower feature
+The adapter must reject an unknown major version, a missing required identity, a mismatched
+provider/model identity, an unready Gateway route, an unsupported recovery state, or a grant it cannot enforce. It may negotiate a narrower feature
 set; it may not silently broaden one.
 
 ## Versioned outputs

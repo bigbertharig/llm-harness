@@ -1,5 +1,15 @@
 # Harness candidate integration and test playbook
 
+## Ownership update (2026-11-24)
+
+The comparison cases and historical evidence below remain useful research. The accepted
+[ownership contract](https://github.com/bigbertharig/benchmarking/blob/master/CROSS_REPO_CONTRACT.md) assigns reusable comparative evaluations to Benchmarking.
+Harness retains deterministic engine/tool conformance, fixtures and development regressions.
+Migration is Planned under the [cleanup plan](https://github.com/bigbertharig/benchmarking/blob/master/REPOSITORY_CLEANUP_PLAN.md); historical receipts are preserved.
+The Gateway readiness rules below describe the managed-rig lane, not a prerequisite for
+future standalone provider adapters. The dated model matrix is historical evidence, not
+a current required model selection.
+
 Date: 2026-10-28
 Status: process defined; frozen short-control and local MCP tool-use runners cover Pi, OpenCode, and DeepSeek; full shared comparison runner pending.
 

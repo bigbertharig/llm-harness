@@ -35,15 +35,17 @@ work if it is deleted. A useful candidate behavior enters the active engine only
 through an explicit shared contract and deterministic tests.
 
 The custom engine remains the maintained default. A third-party or site-specific engine integrates
-through the [engine-adapter contract](ENGINE_ADAPTERS.md). Gateway supplies the objective, ready route, and
-effective grants; the Harness boundary still validates tools and records canonical events. Swapping the
-reasoning loop must not swap the security model.
+through the Planned [engine-adapter contract](ENGINE_ADAPTERS.md). A caller supplies the objective,
+configured provider and effective grants. Gateway is one caller; its adapter validates a ready route.
+The Harness boundary validates tools and records canonical events. Replacing the reasoning loop
+preserves that authorization boundary.
 
 ## How a feature enters the Harness
 
 1. Name the behavior and its failure cases. Use the candidate trials to find
-   examples, then define a model-neutral contract at the Gateway route and tool
-   boundary. Keep provider-specific authentication and inference adapters thin.
+   examples, then define a model-neutral contract at the provider and tool
+   boundary. Keep Gateway-specific readiness inside its adapter, and provider-specific
+   authentication and inference adapters thin.
 2. Implement the shared behavior here. A tool belongs to one owning family in
    the registry; when a provider tool becomes generic, promote it to the shared
    family instead of maintaining competing public tools with the same job.
@@ -67,8 +69,10 @@ effects. A GitHub analyzer can pin a commit and collect files deterministically
 before a model judges them. The Gateway may later compose these steps into a
 work graph, assign the least costly capable model for each remaining judgment,
 and retain evidence and retries. That is the direction for future plans;
-Orchestration's Markdown brain/worker queue remains a separate legacy path.
+Orchestration's Markdown brain/worker queue was removed. Its remaining action queue
+manages hardware lifecycle operations only.
 
 The Harness does not choose GPUs, reserve context capacity, or schedule a plan.
-It receives a ready route, tool grant, and task envelope, then produces turn,
-tool, and completion receipts that Gateway can use to coordinate the next step.
+It receives provider capabilities, a tool grant and a task envelope, then produces
+turn, tool and completion receipts for its caller. The active Gateway adapter requires
+a ready route. Standalone providers and embedding remain Planned.
