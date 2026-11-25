@@ -9,7 +9,9 @@ The project-owned Harness is the default model-use engine. The engine contract a
 another harness without coupling Gateway to that implementation or transferring tool, policy, or
 hardware authority. The in-process `project_agent.py` adapter and a fake alternate engine now exercise
 version rejection, provider identity, grants, cancellation, ordered events and terminal
-receipts. Broader conformance below remains required before remote substitution.
+receipts. Broader conformance below remains required before remote substitution. The current
+in-process alternate engine runs in the trusted Harness process and receives the existing
+run API's journal context; it is not yet an isolation boundary for untrusted engine code.
 
 ## Boundary
 
