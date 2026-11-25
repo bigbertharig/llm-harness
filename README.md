@@ -156,10 +156,10 @@ hardware scheduler.
 
 ## Implementation status
 
-The following cleanup is Planned until its tests and receipts are recorded:
-
-- Package public tool and engine entry points for external projects.
-- Add direct-provider execution while retaining Gateway ready-only validation in its adapter.
-- Freeze run submission/input/cancel/resume events and receipts with conformance fixtures.
-- Keep deterministic tool/engine regressions here; move reusable comparative campaigns to Benchmarking.
-- Test standalone engine and MCP tools without another repository's checkout.
+Implemented and tested: installable engine/MCP entry points, direct-provider execution,
+Gateway ready-only compatibility, authenticated run control, stable event replay, bounded
+input/cancel handling and restart reconciliation. Search comparisons moved to Benchmarking.
+The full registered suites pass 178 tests plus 15 subtests. An isolated wheel install executes
+an actual workspace tool through a fake provider with a fresh HOME and unrelated project.
+Interrupted execution is intentionally not replayed; stack reconstruction remains separate
+from the explicit reconciliation contract. See [standalone operations](docs/STANDALONE.md).

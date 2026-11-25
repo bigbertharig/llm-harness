@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Project-owned bounded model/tool loop for one already-ready Gateway route."""
+"""Project-owned bounded model/tool loop for an explicitly configured provider or an already-ready Gateway route."""
 
 from __future__ import annotations
 
@@ -45,9 +45,10 @@ class AgentLoopError(RuntimeError):
 
 def _completion(gateway: str, route: str, messages: list[dict], max_tokens: int,
                 timeout: float, api_key: str | None = None,
-                tools: list[dict] | None = None) -> dict:
-    headers = {'Accept': 'application/json', 'Content-Type': 'application/json',
-               'X-Require-Ready': 'true'}
+                tools: list[dict] | None = None, *, require_ready: bool = True) -> dict:
+    headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
+    if require_ready:
+        headers['X-Require-Ready'] = 'true'
     if api_key:
         headers['Authorization'] = 'Bearer ' + api_key
     body = {'model': route, 'messages': messages, 'max_tokens': max_tokens}
@@ -221,7 +222,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
               evidence_blocks: list[dict] | None = None,
               journal_root: Path | None = None,
               retry_wait=time.sleep,
-              complete=_completion) -> dict:
+              complete=_completion, provider: dict | None = None, run_id: str | None = None, input_source=None) -> dict:
     """Run a bounded direct loop and return a model-neutral execution receipt."""
     if type(max_tokens) is not int or not 1 <= max_tokens <= MAX_AGENT_OUTPUT_TOKENS:
         raise ValueError(f'max_tokens must be between 1 and {MAX_AGENT_OUTPUT_TOKENS}')
@@ -242,10 +243,19 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             raise ValueError(f'{tool_profile} requires a workspace root')
         workspace_root = workspace_root.resolve(strict=True)
 
-    roster = fetch_ready_roster(gateway, os.environ.get('LLM_GATEWAY_API_KEY'))
-    ready = next((row for row in roster['data'] if row['id'] == route), None)
-    if ready is None or ready['model'] != expected_model:
-        raise ValueError('requested route/model is not in the ready roster')
+    api_key = os.environ.get('LLM_GATEWAY_API_KEY')
+    if provider is None:
+        roster = fetch_ready_roster(gateway, api_key)
+        ready = next((row for row in roster['data'] if row['id'] == route), None)
+        if ready is None or ready['model'] != expected_model:
+            raise ValueError('requested route/model is not in the ready roster')
+    else:
+        from harness_core.providers import validate_direct_provider
+        ready = validate_direct_provider(provider, gateway, route, expected_model)
+        api_key = os.environ.get(provider.get('api_key_env', 'HARNESS_PROVIDER_API_KEY'))
+        if complete is _completion:
+            from functools import partial
+            complete = partial(_completion, require_ready=False)
     requested_max_tokens = max_tokens
     output_limit = ready.get('output_limit')
     if isinstance(output_limit, int) and output_limit > 0:
@@ -259,7 +269,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     messages = [{'role': 'system', 'content': system},
                 {'role': 'user', 'content': child_task_envelope(prompt)},
                 *external_messages]
-    recorder = RunRecorder(journal_root, conversation_id=conversation_id)
+    recorder = RunRecorder(journal_root, run_id=run_id, conversation_id=conversation_id)
     recorder.emit('run.started', payload={'engine': 'big-bertha-project-agent'})
     budget = ToolBudget(max_tool_calls)
     attempted: set[str] = set()
@@ -306,10 +316,26 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             error = decision.reason
         return decision.action
 
+    def apply_input(boundary):
+        if input_source is None:
+            return False
+        incoming = input_source(boundary)
+        if not incoming:
+            return False
+        for item in incoming:
+            text = item['content']
+            digest = hashlib.sha256(text.encode()).hexdigest()
+            recorder.emit('input.steered' if item['mode'] == 'steer' else 'input.queued',
+                          input_id=item['id'], payload={'content_digest': digest})
+            recorder.emit('input.applied', input_id=item['id'], payload={'boundary': boundary})
+            messages.append({'role': 'user', 'content': child_task_envelope(text)})
+        return True
+
     for step_number in range(1, max_model_attempts + 1):
         if cancel_path and cancel_path.exists():
             error = 'cancelled'
             break
+        apply_input('model_end')
         remaining = timeout_s - (time.monotonic() - started)
         if remaining <= 0:
             error = 'timeout'
@@ -320,7 +346,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         model_started = time.monotonic()
         try:
             completion_args = (gateway, route, messages, max_tokens, remaining,
-                               os.environ.get('LLM_GATEWAY_API_KEY'),
+                               api_key,
                                advertised_tools if tools_enabled else [])
             packet = complete(*completion_args)
         except Exception as exc:
@@ -363,12 +389,18 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 'finish_reason': choice.get('finish_reason'),
                 'answer_bytes': len(answer.encode('utf-8')), 'usage': usage,
                 'requested_route': route,
-                'served_model': packet.get('model') or expected_model,
+                'served_model': packet.get('model') or (None if provider else expected_model),
                 'served_provider': packet.get('provider') or ready.get('provider'),
                 'provider_request_id': packet.get('id'),
                 'latency_ms': max(0, round((time.monotonic() - model_started) * 1000))}
         steps.append(step)
         model_calls.append(step)
+
+        if (cancel_path and cancel_path.exists()) or time.monotonic() - started >= timeout_s:
+            recorder.emit('model.completed', model_step_id=model_step_id,
+                          payload={'finish_reason': choice.get('finish_reason')})
+            error = 'cancelled' if cancel_path and cancel_path.exists() else 'timeout'
+            break
 
         if not tool_server or not tools_enabled:
             model_event = ('model.truncated' if choice.get('finish_reason') == 'length'
@@ -377,6 +409,10 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                           payload={'finish_reason': choice.get('finish_reason')})
             if apply_terminal_policy(logical_step, choice.get('finish_reason')) == 'repair':
                 continue
+            if input_source is not None:
+                messages.append({'role': 'assistant', 'content': answer})
+                if apply_input('turn_end'):
+                    continue
             break
 
         try:
@@ -594,7 +630,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     return {'engine': 'big-bertha-project-agent', 'engine_version': 2,
             'task_contract_version': CONTRACT_VERSION,
             'route': route, 'model': expected_model, 'tool_profile': tool_profile,
-            'generation_settings_source': 'runtime_profile',
+            'generation_settings_source': 'provider_default' if provider else 'runtime_profile',
+            'provider_mode': 'direct' if provider else 'gateway_ready',
             'limits': {
                 'route_context_tokens': ready.get('context_length'),
                 'route_output_tokens': output_limit,
@@ -635,6 +672,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--gateway', default='http://127.0.0.1:8080')
+    parser.add_argument('--provider-config', type=Path, help='Explicit direct-provider JSON; omitting retains Gateway ready-only mode')
     parser.add_argument('--route', required=True)
     parser.add_argument('--model', required=True)
     parser.add_argument('--agent-type', choices=['coding', 'research'], required=True)
@@ -653,7 +691,7 @@ def main() -> int:
         server = {'name': 'workspace_read', 'tools': list(WORKSPACE_TOOLS),
                   'definitions': WORKSPACE_TOOL_DEFINITIONS,
                   'command': [os.fspath(Path(os.sys.executable)),
-                              os.fspath(ROOT / 'tools/workspace_read_mcp.py'),
+                              os.fspath(Path(__file__).with_name('workspace_read_mcp.py')),
                               '--root', os.fspath(args.workspace_root.resolve(strict=True))]}
     elif args.tool_profile == 'workspace_git':
         if args.workspace_root is None:
@@ -661,9 +699,10 @@ def main() -> int:
         server = {'name': 'workspace_git', 'tools': list(WORKSPACE_GIT_TOOLS),
                   'definitions': WORKSPACE_GIT_TOOL_DEFINITIONS,
                   'command': [os.fspath(Path(os.sys.executable)),
-                              os.fspath(ROOT / 'tools/workspace_git_mcp.py'),
+                              os.fspath(Path(__file__).with_name('workspace_git_mcp.py')),
                               '--root', os.fspath(args.workspace_root.resolve(strict=True))]}
-    receipt = run_agent(gateway=args.gateway, route=args.route, expected_model=args.model,
+    receipt = run_agent(provider=json.loads(args.provider_config.read_text()) if args.provider_config else None,
+                        gateway=args.gateway, route=args.route, expected_model=args.model,
                         prompt=args.prompt, agent_type=args.agent_type,
                         tool_profile=args.tool_profile, tool_server=server,
                         workspace_root=args.workspace_root, max_tokens=args.max_tokens,

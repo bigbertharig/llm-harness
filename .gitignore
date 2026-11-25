@@ -5,3 +5,7 @@ __pycache__/
 venv/
 .env
 results/
+
+# Python distribution build output
+/build/
+*.egg-info/

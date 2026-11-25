@@ -1,0 +1,2 @@
+"""Frozen questions for reproducing the November 2 historical receipts."""
+QUERIES = [{'id': 'python_taskgroup', 'query': 'Python asyncio TaskGroup official documentation', 'domains': ['docs.python.org']}, {'id': 'mdn_urlsearchparams', 'query': 'MDN URLSearchParams reference', 'domains': ['developer.mozilla.org']}, {'id': 'sqlite_wal', 'query': 'SQLite write ahead logging official documentation', 'domains': ['sqlite.org']}, {'id': 'numpy_broadcasting', 'query': 'NumPy broadcasting official documentation', 'domains': ['numpy.org']}]

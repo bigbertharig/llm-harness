@@ -23,3 +23,9 @@ def test_dashboard_tool_catalog_matches_mcp_servers(tmp_path):
         actual = [tool["name"] for tool in json.loads(run.stdout)["result"]["tools"]]
         published = [tool["name"] for tool in catalog["servers"][server]["tools"]]
         assert actual == published
+
+
+def test_all_published_schemas_match_owner_discovery():
+    result = subprocess.run([sys.executable, str(ROOT / 'tools/mcp_schema_snapshot.py'), 'check'],
+                            cwd=ROOT, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr

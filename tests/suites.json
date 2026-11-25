@@ -9,7 +9,9 @@
       "tests/test_mcp_call_guard.py",
       "tests/test_tool_helper_policy.py",
       "tests/test_codex_responses_compat.py",
-      "tests/test_product_ownership.py"
+      "tests/test_product_ownership.py",
+      "tests/test_direct_provider.py",
+      "tests/test_run_api.py"
     ]
   },
   "local_tools": {

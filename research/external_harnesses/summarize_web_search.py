@@ -7,7 +7,7 @@ from pathlib import Path
 import statistics
 
 import comparison_short_control as common
-from search_provider_benchmark import QUERIES
+from search_queries_20261102 import QUERIES
 
 
 ROOT = common.ROOT

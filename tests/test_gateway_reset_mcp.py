@@ -1,59 +1,33 @@
 import argparse
 import importlib.util
+import io
 import json
 from pathlib import Path
-import sqlite3
+import pytest
+SPEC = importlib.util.spec_from_file_location('gateway_reset_mcp', Path(__file__).parents[1] / 'tools/gateway_reset_mcp.py')
+reset = importlib.util.module_from_spec(SPEC); SPEC.loader.exec_module(reset)
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "tools/gateway_reset_mcp.py"
-SPEC = importlib.util.spec_from_file_location("gateway_reset_mcp", SCRIPT)
-reset = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(reset)
-
-
-def saved_codex_chat(root: Path) -> str:
-    root.mkdir()
-    database = root / "conversations.sqlite3"
-    with sqlite3.connect(database) as db:
-        db.executescript("""
-            CREATE TABLE conversations (id TEXT PRIMARY KEY, provider TEXT, thread_id TEXT);
-            CREATE TABLE turns (id TEXT, conversation_id TEXT, state TEXT, created_at TEXT);
-        """)
-        db.execute("INSERT INTO conversations VALUES (?,?,?)", ("abc123", "codex", "thread-1"))
-        db.execute("INSERT INTO turns VALUES (?,?,?,?)", ("turn-1", "abc123", "running", "2026-11-18"))
-    return "abc123"
-
-
-def test_schedule_persists_request_and_uses_external_systemd_unit(tmp_path, monkeypatch):
-    conversation_id = saved_codex_chat(tmp_path / "chat")
+def test_reset_uses_authenticated_owner_api(monkeypatch):
+    monkeypatch.setenv('LLM_GATEWAY_API_KEY', 'fixture-key')
     calls = []
-
-    class Result:
-        returncode = 0
-        stdout = ""
-        stderr = ""
-
-    monkeypatch.setattr(reset.subprocess, "run", lambda command, **kwargs: calls.append(command) or Result())
-    args = argparse.Namespace(data_root=str(tmp_path / "chat"), conversation_id=conversation_id,
-                              wait_seconds=30)
-    result = reset.schedule(args, {"confirmation": "restart pi-gateway",
-        "recovery_note": "Continue the dynamic context allocator tests."})
-
-    assert result["scheduled"] is True
-    assert calls and calls[0][:4] == ["sudo", "-n", "systemd-run", "--quiet"]
-    assert "--collect" in calls[0]
-    receipt = json.loads(next((tmp_path / "chat" / "reset-requests").glob("*.json")).read_text())
-    assert receipt["state"] == "scheduled"
-    assert receipt["thread_id"] == "thread-1"
+    def send(request, **kwargs):
+        calls.append(request)
+        return io.BytesIO(json.dumps({'schema': 'gateway-reset/1', 'scheduled': True}).encode())
+    monkeypatch.setattr(reset, 'urlopen', send)
+    args = argparse.Namespace(gateway='http://localhost:8080', conversation_id='abc123')
+    assert reset.schedule(args, {'confirmation': 'restart pi-gateway', 'recovery_note': 'continue', 'request_id': 'request1'})['scheduled']
+    request = calls[0]
+    assert request.full_url == 'http://localhost:8080/v1/operations/restart'
+    assert request.get_header('Authorization') == 'Bearer fixture-key'
+    assert json.loads(request.data)['request_id'] == 'request1'
+    assert 'sqlite3' not in Path(reset.__file__).read_text()
+    assert 'subprocess' not in Path(reset.__file__).read_text()
 
 
-def test_schedule_requires_exact_confirmation(tmp_path):
-    conversation_id = saved_codex_chat(tmp_path / "chat")
-    args = argparse.Namespace(data_root=str(tmp_path / "chat"), conversation_id=conversation_id,
-                              wait_seconds=30)
-    try:
-        reset.schedule(args, {"confirmation": "yes", "recovery_note": "continue"})
-    except ValueError as exc:
-        assert "confirmation" in str(exc)
-    else:
-        raise AssertionError("unsafe reset confirmation was accepted")
+def test_reset_requires_authority(monkeypatch):
+    monkeypatch.delenv('LLM_GATEWAY_API_KEY', raising=False)
+    with pytest.raises(ValueError, match='API_KEY'):
+        reset.schedule(argparse.Namespace(), {'confirmation': 'restart pi-gateway'})
+    with pytest.raises(ValueError, match='confirmation'):
+        reset.schedule(argparse.Namespace(), {'confirmation': 'yes'})

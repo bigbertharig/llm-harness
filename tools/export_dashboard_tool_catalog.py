@@ -2,6 +2,7 @@
 """Export the enabled dashboard projection from harness's full tool registry."""
 
 import argparse
+import hashlib
 import json
 import os
 import tempfile
@@ -22,6 +23,9 @@ def build(registry: dict) -> dict:
     for bundle, details in bundles.items():
         if not bundle.isidentifier() or not isinstance(details, dict) or details.get("kind") not in {"shared", "provider"}:
             raise ValueError(f"invalid source bundle: {bundle}")
+    snapshots = json.loads((ROOT / 'mcp_schemas.json').read_text())
+    if snapshots.get('schema') != 'harness-mcp-schemas/1':
+        raise ValueError('unsupported MCP schema snapshot')
     servers = {}
     all_names = set()
     for name, surface in registry["surfaces"].items():
@@ -58,7 +62,15 @@ def build(registry: dict) -> dict:
                (tool["status"] != "prototype" or set(tool) != {"name", "status", "implementation"})
                for tool in tools):
             raise ValueError(f"invalid dashboard tools: {name}")
-        enabled = [tool for tool in tools if "approval" in tool]
+        enabled = []
+        for tool in tools:
+            if 'approval' not in tool:
+                continue
+            schema = snapshots['servers'].get(name, {}).get(tool['name'])
+            if not isinstance(schema, dict):
+                raise ValueError(f'missing reviewed schema for {name}.{tool["name"]}')
+            digest = hashlib.sha256(json.dumps(schema,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            enabled.append(dict(tool,input_schema=schema,input_schema_sha256=digest))
         if not enabled:
             raise ValueError(f"no dashboard tools: {name}")
         servers[name] = {"purpose": surface["purpose"], "origin": surface["origin"],

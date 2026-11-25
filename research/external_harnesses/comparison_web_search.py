@@ -17,7 +17,7 @@ import comparison_short_control as common
 import comparison_tool_use as old_drivers
 import comparison_extra_candidates as extra_drivers
 from candidate_controllers.hermes import run_hermes
-from search_provider_benchmark import QUERIES
+from search_queries_20261102 import QUERIES
 
 
 SERVERS = {'rig_search': common.ROOT / 'mcp_servers/rig_search/mcp_server.py'}

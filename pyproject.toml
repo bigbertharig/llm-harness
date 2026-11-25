@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-harness"
+version = "0.1.0"
+description = "Bounded agent engine and independently callable MCP tools"
+requires-python = ">=3.10"
+dependencies = ["jsonschema>=4.23,<5", "requests>=2.32,<3"]
+
+[project.scripts]
+harness-service = "llm_harness.service:main"
+harness-run = "project_agent:main"
+harness-workspace-read = "workspace_read_mcp:main"
+harness-workspace-git = "workspace_git_mcp:main"
+
+[tool.setuptools]
+packages = ["llm_harness", "harness_core"]
+py-modules = ["project_agent", "child_policy", "child_public_tools", "ready_roster", "subagent_contract", "workspace_read_mcp", "workspace_git_mcp", "github_public_mcp", "google_workspace_mcp", "gateway_reset_mcp", "host_control_mcp", "rig_info_mcp"]
+package-dir = {"" = "tools", "llm_harness" = "src/llm_harness", "harness_core" = "tools/harness_core"}
