@@ -77,3 +77,13 @@ The six archived harnesses are research inputs, not automatically conforming eng
 must remain deletion-safe. The first implementation milestone is an in-process adapter around
 `tools/project_agent.py` plus a fake engine; only after those pass should a subprocess or remote adapter
 be added.
+
+## Standalone status (2026-11-24)
+
+The generic engine envelope and substitution conformance described here remain an
+implementation target. Existing loop journals and receipts do not establish that full
+boundary. `tools/project_agent.py` currently requires Gateway ready-roster discovery
+even for a tool-free task. A standalone provider adapter and a public embedding entry
+point must support another project without Gateway, while the optional Gateway
+adapter retains its ready-only checks. See the [source audit and acceptance
+criteria](https://github.com/bigbertharig/benchmarking/blob/master/reports/STANDALONE_ISOLATION_AUDIT_2026-11-24.md).
