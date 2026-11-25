@@ -1,13 +1,15 @@
 # Harness engine adapters
 
-Status: **Planned contract**, accepted 2026-11-24. Active loop journals, receipts and MCP
-adapters are documented in [the framework](HARNESS_FRAMEWORK.md); they do not establish
-a completed generic run/engine service.
+Status: **Partial implementation**. The public in-process adapter and Gateway-free
+direct-provider run factory are active; remote engine substitution and the full conformance
+set below remain planned. Active loop journals, receipts and MCP adapters are documented
+in [the framework](HARNESS_FRAMEWORK.md).
 
 The project-owned Harness is the default model-use engine. The engine contract allows a site to add
 another harness without coupling Gateway to that implementation or transferring tool, policy, or
-hardware authority. The in-process `project_agent.py` adapter and conformance runner are the first
-implementation milestone.
+hardware authority. The in-process `project_agent.py` adapter and a fake alternate engine now exercise
+version rejection, provider identity, grants, cancellation, ordered events and terminal
+receipts. Broader conformance below remains required before remote substitution.
 
 ## Boundary
 
