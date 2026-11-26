@@ -17,5 +17,5 @@ harness-workspace-git = "workspace_git_mcp:main"
 
 [tool.setuptools]
 packages = ["llm_harness", "harness_core"]
-py-modules = ["project_agent", "child_policy", "child_public_tools", "ready_roster", "subagent_contract", "workspace_read_mcp", "workspace_git_mcp", "github_public_mcp", "google_workspace_mcp", "gateway_reset_mcp", "host_control_mcp", "rig_info_mcp"]
+py-modules = ["project_agent", "jev_tool_selector", "child_policy", "child_public_tools", "ready_roster", "subagent_contract", "workspace_read_mcp", "workspace_git_mcp", "github_public_mcp", "google_workspace_mcp", "gateway_reset_mcp", "host_control_mcp", "rig_info_mcp"]
 package-dir = {"" = "tools", "llm_harness" = "src/llm_harness", "harness_core" = "tools/harness_core"}

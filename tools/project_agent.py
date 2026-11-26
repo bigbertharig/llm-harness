@@ -222,7 +222,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
               evidence_blocks: list[dict] | None = None,
               journal_root: Path | None = None,
               retry_wait=time.sleep,
-              complete=_completion, provider: dict | None = None, run_id: str | None = None, input_source=None) -> dict:
+              complete=_completion, provider: dict | None = None, run_id: str | None = None, input_source=None,
+              tool_selector=None) -> dict:
     """Run a bounded direct loop and return a model-neutral execution receipt."""
     if type(max_tokens) is not int or not 1 <= max_tokens <= MAX_AGENT_OUTPUT_TOKENS:
         raise ValueError(f'max_tokens must be between 1 and {MAX_AGENT_OUTPUT_TOKENS}')
@@ -235,6 +236,13 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             raise ValueError('tool-free run cannot have a tool server')
     elif not isinstance(tool_server, dict) or not tool_server.get('tools'):
         raise ValueError('tool profile requires an allowlisted tool server')
+    if tool_selector not in (None, 'jev') and not callable(tool_selector):
+        raise ValueError('tool_selector must be jev or a callable')
+    selector_mode = 'jev' if tool_selector == 'jev' else ('custom' if tool_selector else 'model')
+    if tool_selector == 'jev':
+        if not os.environ.get('TYPESAFE_API_KEY'):
+            raise ValueError('TYPESAFE_API_KEY is required for Jev tool selection')
+        from jev_tool_selector import select as tool_selector
     profile_contract = get_tool_profile(tool_profile) if tool_profile != 'none' else None
     if profile_contract and set(tool_server['tools']) - profile_contract.tools:
         raise ValueError('tool server exceeds the selected profile')
@@ -276,6 +284,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     tool_calls: list[dict] = []
     steps: list[dict] = []
     model_calls: list[dict] = []
+    selector_calls: list[dict] = []
     repair_attempted = False
     truncation_repair_attempted = False
     tool_errors = 0
@@ -340,6 +349,31 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         if remaining <= 0:
             error = 'timeout'
             break
+        selected_tools = advertised_tools
+        if tools_enabled and tool_selector and len(advertised_tools) > 1:
+            selector_started = time.monotonic()
+            selection = {'step': step_number, 'status': 'fallback'}
+            try:
+                result = tool_selector(messages, tool_server, remaining)
+                answer_choice = result['answer']
+                name = answer_choice['choice']
+                probability = answer_choice['probabilities'][name]
+                selection.update({'model': result.get('model'), 'choice': name,
+                                  'probability': probability, 'usage': result.get('usage', {})})
+                if (name in tool_server['tools'] and isinstance(probability, (int, float))
+                        and probability >= 0.8):
+                    selected_tools = [row for row in advertised_tools
+                                      if row['function']['name'] ==
+                                      'mcp__' + tool_server['name'] + '__' + name]
+                    selection['status'] = 'selected'
+            except Exception as exc:
+                selection['error_code'] = type(exc).__name__
+            selection['latency_ms'] = round((time.monotonic() - selector_started) * 1000)
+            selector_calls.append(selection)
+            remaining = timeout_s - (time.monotonic() - started)
+            if remaining <= 0:
+                error = 'timeout'
+                break
         model_step_id = f'model-{step_number}'
         recorder.emit('model.started', model_step_id=model_step_id,
                       payload={'route': route})
@@ -347,7 +381,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         try:
             completion_args = (gateway, route, messages, max_tokens, remaining,
                                api_key,
-                               advertised_tools if tools_enabled else [])
+                               selected_tools if tools_enabled else [])
             packet = complete(*completion_args)
         except Exception as exc:
             failure = {'attempt': step_number, 'finish_reason': 'provider_error',
@@ -660,6 +694,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             'model_steps': len(steps), 'model_attempts': len(model_calls),
             'max_model_steps': max_model_steps,
             'model_call_receipts': model_calls,
+            'tool_selector': selector_mode,
+            'tool_selector_receipts': selector_calls,
             'steps': steps, 'tool_calls': len(tool_calls),
             'tool_call_summary': tool_calls, 'tool_budget': budget.receipt(),
             'file_evidence_coverage': _file_evidence_coverage(tool_calls),
@@ -677,6 +713,7 @@ def main() -> int:
     parser.add_argument('--model', required=True)
     parser.add_argument('--agent-type', choices=['coding', 'research'], required=True)
     parser.add_argument('--tool-profile', choices=['none', 'workspace_read', 'workspace_git'], default='none')
+    parser.add_argument('--tool-selector', choices=['model', 'jev'], default='model')
     parser.add_argument('--workspace-root', type=Path)
     parser.add_argument('--max-tokens', type=int, default=1024)
     parser.add_argument('--timeout', type=int, default=180)
@@ -707,6 +744,7 @@ def main() -> int:
                         tool_profile=args.tool_profile, tool_server=server,
                         workspace_root=args.workspace_root, max_tokens=args.max_tokens,
                         timeout_s=args.timeout, max_tool_calls=args.max_tool_calls,
+                        tool_selector=None if args.tool_selector == 'model' else 'jev',
                         cancel_path=args.out.with_suffix('.cancel'),
                         journal_root=args.out.parent / (args.out.stem + '-journal'))
     args.out.parent.mkdir(parents=True, exist_ok=True)
