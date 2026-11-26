@@ -20,6 +20,10 @@ adapter, which checks the published ready roster and sends `X-Require-Ready: tru
 Neither adapter injects sampler settings. Receipts distinguish provider defaults from runtime
 profiles, requested identity from reported identity, and cancellation from successful completion.
 
+Optional `--tool-selector jev` uses TypeSafe's hosted API (`TYPESAFE_API_KEY`)
+to narrow advertised tools; the default remains model selection. This needs
+internet, so offline use would require a future local decision-model adapter.
+
 `harness-workspace-read --root PROJECT` and `harness-workspace-git --root PROJECT` expose
 independent stdio MCP tools. External coding engines can use them without the Harness loop.
 Other installed scripts resolve through `llm_harness.tools.script(name)`; no sibling source
