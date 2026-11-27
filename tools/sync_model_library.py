@@ -66,7 +66,7 @@ def main() -> int:
         print(json.dumps({"stale": stale, "source_sha256": after["source_sha256"],
                           "models": changes(before, after)}, sort_keys=True))
         if args.mode == "sync" and stale:
-            with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=DESTINATION.parent,
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="\n", dir=DESTINATION.parent,
                                              prefix=".model_catalog.", suffix=".tmp",
                                              delete=False) as handle:
                 json.dump(after, handle, indent=2, sort_keys=True)
