@@ -34,11 +34,13 @@ runtime, public tool catalog, default tests, and project-owned trials must still
 work if it is deleted. A useful candidate behavior enters the active engine only
 through an explicit shared contract and deterministic tests.
 
-The custom engine remains the maintained default. A third-party or site-specific engine integrates
-through the Planned [engine-adapter contract](ENGINE_ADAPTERS.md). A caller supplies the objective,
-configured provider and effective grants. Gateway is one caller; its adapter validates a ready route.
-The Harness boundary validates tools and records canonical events. Replacing the reasoning loop
-preserves that authorization boundary.
+The custom engine is the maintained default, with first-class connections to the other
+repositories. Those connections are modular at the model endpoint, standalone MCP tool,
+and optional Gateway run-control boundaries described in [engine adapters](ENGINE_ADAPTERS.md).
+Another harness can reuse the first two directly where its native interfaces fit. A
+Gateway-managed replacement needs a small, tested adapter for the operations it actually
+supports; it does not automatically inherit our broker, approvals, journal, or recovery.
+We maintain one owned agent loop rather than six candidate-specific copies of those features.
 
 ## How a feature enters the Harness
 
@@ -74,5 +76,7 @@ manages hardware lifecycle operations only.
 
 The Harness does not choose GPUs, reserve context capacity, or schedule a plan.
 It receives provider capabilities, a tool grant and a task envelope, then produces
-turn, tool and completion receipts for its caller. The active Gateway adapter requires
-a ready route. Standalone providers and embedding remain Planned.
+turn, tool and completion receipts for its caller. Its active Gateway inference adapter
+requires a ready route; direct-provider execution and in-process embedding also work
+without Gateway. External harness compatibility is evaluated per connection, not
+promised as universal drop-in substitution.

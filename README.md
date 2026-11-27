@@ -1,6 +1,6 @@
 # llm-harness
 
-Harness owns the agent loop and model-facing tooling: shared tools, prompts, context, compaction, sessions, delegation, execution limits and recovery. Its MCP tools, bounded project-agent loop, public in-process embedding interface, direct-provider execution and run API are active. Remote engine substitution and its full conformance suite remain future work. Gateway owns conversations and account connections; Orchestration owns physical admission and runtime lifecycle.
+Harness owns the agent loop and model-facing tooling: shared tools, prompts, context, compaction, sessions, delegation, execution limits and recovery. Its MCP tools, bounded project-agent loop, public in-process embedding interface, direct-provider execution and run API are active. External harnesses may reuse model and MCP interfaces; Gateway-managed substitution requires a specific tested adapter. Gateway owns conversations and account connections; Orchestration owns physical admission and runtime lifecycle.
 
 ## Product boundary
 
@@ -12,8 +12,8 @@ hardware operations and do not edit that service's private state.
 ## Read this repo
 
 - [Own Harness direction](docs/OWN_HARNESS_DIRECTION.md): how tested external behavior becomes shared project code.
-- [Harness engine adapters](docs/ENGINE_ADAPTERS.md): how another harness can be substituted without
-  inheriting tool, policy, or hardware authority.
+- [Harness integration boundaries](docs/ENGINE_ADAPTERS.md): how our owned engine connects to
+  providers, MCP tools, and Gateway, and how another harness can reuse selected interfaces.
 - [Harness framework](docs/HARNESS_FRAMEWORK.md): the active deterministic layers and implementation status.
 - [Harness test playbook](docs/HARNESS_TEST_PLAYBOOK.md): how candidate harnesses are compared.
 - [Shared tool families](docs/TOOL_FAMILIES.md): tool ownership, model-neutral adapters, and Chat/Coding grants.
