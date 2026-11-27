@@ -1,6 +1,6 @@
 # llm-harness
 
-Harness owns the agent loop and model-facing tooling: shared tools, prompts, context, compaction, sessions, delegation, execution limits and recovery. Its MCP tools and bounded project-agent loop are active; the loop currently requires Gateway-ready routes. A public embedding interface, direct-provider execution and generic engine/run adapters are Planned. Gateway owns conversations and account connections; Orchestration owns physical admission and runtime lifecycle.
+Harness owns the agent loop and model-facing tooling: shared tools, prompts, context, compaction, sessions, delegation, execution limits and recovery. Its MCP tools, bounded project-agent loop, public in-process embedding interface, direct-provider execution and run API are active. Remote engine substitution and its full conformance suite remain future work. Gateway owns conversations and account connections; Orchestration owns physical admission and runtime lifecycle.
 
 ## Product boundary
 
@@ -38,7 +38,7 @@ Named suites in `tests/suites.json` provide smaller change-scoped runs; the full
 
 ## Current deployment
 
-Gateway and the Harness run on the Pi. `tools/project_agent.py` is the project-owned bounded turn/tool loop used by delegated local children. It consumes prepared model routes, advertises reviewed MCP schemas, enforces tool and turn budgets, records receipts, and does not own admission or GPU placement. Gateway owns dashboard conversations and its authenticated LAN/mobile front doors. Gateway's Manager still coordinates part of admission and loading; the rig-side Orchestration layer enforces hardware rules and runs admitted model services. The six external harness adapters and their old comparison runners live only in the deletion-safe `research/external_harnesses/` archive; they are not imported by the runtime or default tests. A general durable harness session service remains a design; see [future durable sessions](docs/REMOTE_SESSIONS_DESIGN.md).
+Gateway and the Harness run on the Pi. `tools/project_agent.py` is the project-owned bounded turn/tool loop used by delegated local children. It consumes prepared model routes, advertises reviewed MCP schemas, enforces tool and turn budgets, records receipts, and does not own admission or GPU placement. Gateway owns dashboard conversations and its authenticated LAN/mobile front doors. Gateway's Manager still coordinates part of admission and loading; the rig-side Orchestration layer enforces hardware rules and runs admitted model services. The six external harness adapters and their old comparison runners live only in the deletion-safe `research/external_harnesses/` archive; they are not imported by the runtime or default tests. Gateway-owned saved conversations support the current desktop and phone recovery workflow. A separate durable Harness session service is a deferred design; see [future durable sessions](docs/REMOTE_SESSIONS_DESIGN.md).
 
 ## Gateway interface for trials
 

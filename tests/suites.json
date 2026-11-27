@@ -11,7 +11,8 @@
       "tests/test_codex_responses_compat.py",
       "tests/test_product_ownership.py",
       "tests/test_direct_provider.py",
-      "tests/test_run_api.py"
+      "tests/test_run_api.py",
+      "tests/test_engine_adapter.py"
     ]
   },
   "local_tools": {

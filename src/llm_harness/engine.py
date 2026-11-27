@@ -46,13 +46,15 @@ def project_agent_engine() -> InProcessEngine:
 
 def embedded_run_api(root: Path, *, endpoint: str, route: str, model: str,
                      provider: dict, engine: InProcessEngine | None = None,
-                     tool_servers: dict | None = None) -> RunAPI:
+                     tool_servers: dict | None = None,
+                     workspace_root: Path | None = None) -> RunAPI:
     """Create a local run API; the caller owns provider and tool authority."""
     validate_direct_provider(provider, endpoint, route, model)
     servers = tool_servers or {}
     return RunAPI(root, engine or project_agent_engine(), {
         "engine_contract": SCHEMA,
         "gateway": endpoint, "route": route, "expected_model": model,
-        "provider": provider, "allowed_profiles": ["none", *servers.keys()],
+        "provider": provider, "workspace_root": workspace_root,
+        "allowed_profiles": ["none", *servers.keys()],
         "tool_servers": servers,
     })

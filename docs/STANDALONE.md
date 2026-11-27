@@ -20,6 +20,13 @@ adapter, which checks the published ready roster and sends `X-Require-Ready: tru
 Neither adapter injects sampler settings. Receipts distinguish provider defaults from runtime
 profiles, requested identity from reported identity, and cancellation from successful completion.
 
+Python callers can create the same durable run boundary with
+`llm_harness.engine.embedded_run_api(state_dir, endpoint=..., route=..., model=...,
+provider=..., tool_servers=..., workspace_root=...)`. The caller supplies the provider,
+reviewed tool servers, and project root; a run may request only a configured tool profile.
+The project root enables workspace tools without a Gateway checkout. The in-process
+adapter is trusted code and is not an isolation boundary for an untrusted engine.
+
 Optional `--tool-selector jev` uses TypeSafe's hosted API (`TYPESAFE_API_KEY`)
 to narrow advertised tools; the default remains model selection. This needs
 internet, so offline use would require a future local decision-model adapter.

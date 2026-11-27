@@ -114,11 +114,14 @@ must remain deletion-safe. The first implementation milestone is an in-process a
 `tools/project_agent.py` plus a fake engine; only after those pass should a subprocess or remote adapter
 be added.
 
-## Standalone status (2026-11-24)
+## Standalone status and next Harness work
 
-The generic engine envelope and substitution conformance described here remain an
-implementation target. Existing loop journals and receipts do not establish that full
-boundary. `tools/project_agent.py` currently requires Gateway ready-roster discovery
-even for a tool-free task. A standalone provider adapter and a public embedding entry
-point must support another project without Gateway, while the optional Gateway
-adapter retains its ready-only checks. See the [implementation status](../README.md#implementation-status).
+The in-process embedding entry point, direct provider, and fake alternate engine pass
+Gateway-free identity, version, grant, cancellation, ordered-event, terminal-receipt,
+and brokered workspace-tool fixtures. The adapter fixture is part of the named
+`agent_runtime` suite.
+
+Before offering another engine as a supported substitute, add a paired Gateway
+consumer fixture and complete the prompt-injection, uncertain-write/reconciliation,
+recovery, and budget conformance matrix above. Only then consider subprocess or remote adapters. The existing trusted
+in-process adapter is useful without claiming an isolation boundary or full substitution.
