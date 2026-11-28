@@ -144,6 +144,30 @@ class SelectedRunTests(unittest.TestCase):
                 restarted.submit({**second_task, 'request_id': 'missing-parent',
                                   'parent_run_id': 'missing'})
 
+    def test_continuation_keeps_only_four_recent_exchanges(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            observed = []
+            def engine(**kwargs):
+                observed.append(kwargs)
+                return {'run': {'phase': 'succeeded'}, 'answer': 'answer-' + kwargs['prompt']}
+            api = RunAPI(root / 'state', engine,
+                         {'gateway': 'http://gateway.local', 'allow_ready_routes': True,
+                          'allowed_profiles': ['none']})
+            parent = None
+            for index in range(6):
+                task = {'schema': SCHEMA, 'request_id': f'turn-{index}',
+                        'conversation_id': 'long-chat', 'route': 'gpu-rig/local',
+                        'expected_model': 'local', 'tool_profile': 'none',
+                        'prompt': f'fact-{index}'}
+                if parent:
+                    task['parent_run_id'] = parent
+                parent = api.submit(task)['run_id']
+                api.execute(parent)
+            self.assertEqual([turn['prompt'] for turn in observed[-1]['prior_turns']],
+                             ['fact-1', 'fact-2', 'fact-3', 'fact-4'])
+            self.assertNotIn('fact-0', str(observed[-1]['prior_turns']))
+
     def test_model_receives_prior_exchange_before_current_task(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
