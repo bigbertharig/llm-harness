@@ -83,10 +83,18 @@ The service configuration owns provider credentials and tool commands. With
 with `allowed_workspace_roots`, it selects only a configured workspace.
 
 A Coding run may send `parent_run_id` to continue a successful run in the same
-conversation and workspace. Harness stores the link and reconstructs all completed user/assistant exchanges
-for each new model request; each run keeps its own durable receipt. If the complete
-conversation cannot fit the selected model context window, the run fails explicitly
-instead of silently dropping old turns. Automatic compaction is not yet available.
+conversation and workspace. Harness stores the link and reconstructs completed user/assistant exchanges
+for each new model request; each run keeps its own durable receipt. A submitted run
+may set `context_policy` to `conversation` for ongoing main chats or `agent`
+(the default) for bounded task agents. Conversation policy starts compaction at
+roughly 80% of the selected model context; agent policy waits until roughly 90%
+but can still compact and continue a long task. Both retain recent complete
+exchanges and summarize older history on the same selected route. The original
+run records stay intact, while a committed summary and retained tail are saved
+in the new run receipt and reconstructed after restart. Truncated or non-shrinking
+summaries are refused. A single oversized current request with no older turns
+cannot be repaired by compaction. Context costs currently use a conservative
+text estimate rather than exact tokenization.
 
 The `harness-control/1` API supports `POST /v1/runs`, `GET /v1/runs/ID`,
 `GET /v1/runs/ID/events?after=N`, and `POST /v1/runs/ID/{input,cancel,resume}`.

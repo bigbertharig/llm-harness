@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import time
+from uuid import uuid4
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -288,7 +289,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
               journal_root: Path | None = None,
               retry_wait=time.sleep,
               complete=_completion, provider: dict | None = None, run_id: str | None = None, input_source=None,
-              tool_selector=None, prior_turns=None) -> dict:
+              tool_selector=None, prior_turns=None, context_policy='agent') -> dict:
     """Run a bounded direct loop and return a model-neutral execution receipt."""
     if type(max_tokens) is not int or not 1 <= max_tokens <= MAX_AGENT_OUTPUT_TOKENS:
         raise ValueError(f'max_tokens must be between 1 and {MAX_AGENT_OUTPUT_TOKENS}')
@@ -301,6 +302,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             raise ValueError('tool-free run cannot have a tool server')
     elif not isinstance(tool_server, dict) or not tool_server.get('tools'):
         raise ValueError('tool profile requires an allowlisted tool server')
+    if context_policy not in ('agent', 'conversation'):
+        raise ValueError('invalid context policy')
     if tool_selector not in (None, 'jev') and not callable(tool_selector):
         raise ValueError('tool_selector must be jev or a callable')
     selector_mode = 'jev' if tool_selector == 'jev' else ('custom' if tool_selector else 'model')
@@ -356,20 +359,87 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 *prior_messages,
                 {'role': 'user', 'content': current_envelope},
                 *external_messages]
-    # A new inference request has no provider-side memory. Preserve every durable
-    # exchange until the selected model's actual context window is exhausted.
-    # UTF-8 bytes upper-bound content token count for byte-based tokenizers; leave
-    # room for message framing and the model response.
+    # The two dashboard tabs use conversation policy. Standalone task agents
+    # keep their shorter default, but may compact when they actually grow.
     context_length = ready.get('context_length')
-    if isinstance(context_length, int) and context_length > 0:
-        input_bytes = sum(len(row['content'].encode('utf-8')) for row in messages)
-        reserve = max_tokens + max(256, context_length // 20) + 32 * len(messages)
-        if input_bytes + reserve > context_length:
-            raise ValueError(
-                'conversation exceeds this model context window; explicit compaction '
-                'or a larger-context route is required')
+    started = time.monotonic()
     recorder = RunRecorder(journal_root, run_id=run_id, conversation_id=conversation_id)
     recorder.emit('run.started', payload={'engine': 'big-bertha-project-agent'})
+    compaction = None
+    if isinstance(context_length, int) and context_length > 0:
+        def context_cost(rows):
+            return sum((len(row['content'].encode('utf-8')) + 2) // 3 + 16
+                       for row in rows)
+        reserve = max_tokens + max(256, context_length // 20)
+        threshold = int(context_length * (0.8 if context_policy == 'conversation' else 0.9))
+        if prior_turns and context_cost(messages) + reserve > threshold:
+            # Preserve the newest complete exchanges; summarize only an older
+            # balanced span. Original run records remain unchanged and recoverable.
+            keep_budget = max(256, int(context_length * 0.12))
+            kept = []
+            for turn in reversed(prior_turns):
+                cost = (len(turn['prompt'].encode('utf-8')) +
+                        len(turn['answer'].encode('utf-8')) + 5) // 3 + 32
+                if cost > keep_budget and not kept:
+                    break
+                if kept and sum((len(t['prompt'].encode('utf-8')) +
+                                 len(t['answer'].encode('utf-8')) + 5) // 3 + 32
+                                for t in kept) + cost > keep_budget:
+                    break
+                kept.append(turn)
+            retained = list(reversed(kept))
+            old = prior_turns[:len(prior_turns) - len(retained)]
+            if old:
+                compaction_id = uuid4().hex
+                recorder.emit('compaction.started', compaction_id=compaction_id,
+                              payload={'policy': context_policy, 'source_turns': len(old)})
+                try:
+                    transcript = '\n'.join(
+                        f"User: {turn['prompt']}\nAssistant: {turn['answer']}"
+                        for turn in old)
+                    summary_messages = [
+                        {'role': 'system', 'content':
+                         'Summarize the earlier conversation for exact continuation. '
+                         'Preserve the current objective, user preferences, corrected '
+                         'facts with superseded values marked obsolete, decisions, '
+                         'relevant files, verification, and pending work. Omit routine '
+                         'filler. Never invent facts. Return only a concise summary.'},
+                        {'role': 'user', 'content': transcript}]
+                    summary_cap = min(1536, output_limit) if isinstance(output_limit, int) and output_limit > 0 else 1536
+                    packet = complete(gateway, route, summary_messages, summary_cap,
+                                      timeout_s, api_key, [])
+                    summary = _message_text(packet).strip()
+                    finish = packet['choices'][0].get('finish_reason')
+                    if (not summary or finish == 'length' or
+                            len(summary.encode('utf-8')) >= len(transcript.encode('utf-8'))):
+                        raise ValueError('compaction summary is incomplete or did not shrink')
+                    rebuilt = ([{'role': 'system', 'content': system},
+                                {'role': 'user', 'content': 'Earlier conversation checkpoint'},
+                                {'role': 'assistant', 'content': summary}] +
+                               [message for turn in retained for message in (
+                                   {'role': 'user', 'content': turn['prompt']},
+                                   {'role': 'assistant', 'content': turn['answer']})] +
+                               [{'role': 'user', 'content': current_envelope}] +
+                               external_messages)
+                    if context_cost(rebuilt) + reserve > context_length:
+                        raise ValueError('compaction did not free enough model context')
+                    messages = rebuilt
+                    compaction = {'summary': summary, 'retained_turns': retained,
+                                  'source_turns': len(old), 'policy': context_policy,
+                                  'reported_model': packet.get('model'),
+                                  'usage': packet.get('usage', {})}
+                    recorder.emit('compaction.checkpointed', compaction_id=compaction_id,
+                                  payload={'summary_sha256': hashlib.sha256(summary.encode()).hexdigest(),
+                                           'source_turns': len(old)})
+                    recorder.emit('compaction.committed', compaction_id=compaction_id,
+                                  payload={'retained_turns': len(retained)})
+                except Exception as exc:
+                    recorder.emit('compaction.aborted', compaction_id=compaction_id,
+                                  payload={'reason': type(exc).__name__})
+                    raise
+        if context_cost(messages) + reserve > context_length:
+            raise ValueError('conversation exceeds this model context window; '
+                             'compaction could not fit it')
     budget = ToolBudget(max_tool_calls)
     attempted: set[str] = set()
     tool_calls: list[dict] = []
@@ -383,7 +453,6 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     tools_enabled = bool(tool_server)
     answer = ''
     error = None
-    started = time.monotonic()
     # A requested tool budget must also be reachable across sequential model
     # turns. Keep the hard ceiling, then reserve two tool-free terminal turns:
     # one normal synthesis and one bounded truncation repair.
@@ -812,6 +881,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             'run': recorder.receipt(), 'evidence_provenance': external_provenance,
             'model_steps': len(steps), 'model_attempts': len(model_calls),
             'prior_turns_used': len(prior_turns),
+            'context_policy': context_policy, 'compaction': compaction,
             'max_model_steps': max_model_steps,
             'model_call_receipts': model_calls,
             'tool_selector': selector_mode,

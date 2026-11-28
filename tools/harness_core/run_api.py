@@ -52,7 +52,7 @@ class RunAPI:
         request_id = identifier(task.get('request_id'))
         if task.get('conversation_id') is not None:
             identifier(task['conversation_id'])
-        if set(task) - {'schema', 'request_id', 'prompt', 'agent_type', 'tool_profile', 'max_tokens', 'timeout_s', 'max_tool_calls', 'route', 'expected_model', 'workspace_root', 'conversation_id', 'parent_run_id'}:
+        if set(task) - {'schema', 'request_id', 'prompt', 'agent_type', 'tool_profile', 'max_tokens', 'timeout_s', 'max_tool_calls', 'route', 'expected_model', 'workspace_root', 'conversation_id', 'parent_run_id', 'context_policy'}:
             raise ValueError('unsupported task fields; provider, workspace and tools are service configuration')
         route, model = task.get('route'), task.get('expected_model')
         if (route is None) != (model is None):
@@ -91,6 +91,8 @@ class RunAPI:
             raise ValueError('tool grant exceeds service authority')
         if task.get('agent_type', 'coding') not in ('coding', 'research'):
             raise ValueError('invalid agent type')
+        if task.get('context_policy', 'agent') not in ('agent', 'conversation'):
+            raise ValueError('invalid context policy')
         for key, maximum, default in [('max_tokens',4096,1024),('timeout_s',600,180),('max_tool_calls',12,12)]:
             value = task.get(key, default)
             if type(value) is not int or not 1 <= value <= maximum:
@@ -190,6 +192,16 @@ class RunAPI:
                     raise ValueError('continuation path changed conversation or workspace')
                 turns.append({'prompt': prior_task['prompt'],
                               'answer': receipt.get('answer', '')})
+                checkpoint = receipt.get('compaction')
+                if checkpoint is not None:
+                    if (not isinstance(checkpoint, dict) or
+                            not isinstance(checkpoint.get('summary'), str) or
+                            not isinstance(checkpoint.get('retained_turns'), list)):
+                        raise ValueError('invalid durable compaction checkpoint')
+                    turns.extend(reversed(checkpoint['retained_turns']))
+                    turns.append({'prompt': 'Earlier conversation checkpoint',
+                                  'answer': checkpoint['summary']})
+                    break
                 parent_id = prior_task.get('parent_run_id')
         turns.reverse()
         return turns

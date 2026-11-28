@@ -167,6 +167,39 @@ class SelectedRunTests(unittest.TestCase):
             self.assertEqual([turn['prompt'] for turn in observed[-1]['prior_turns']],
                              ['fact-0', 'fact-1', 'fact-2', 'fact-3', 'fact-4'])
 
+    def test_compaction_checkpoint_survives_run_api_restart(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            observed = []
+            def engine(**kwargs):
+                observed.append(kwargs)
+                receipt = {'run': {'phase': 'succeeded'},
+                           'answer': 'answer-' + kwargs['prompt']}
+                if kwargs['prompt'] == 'second':
+                    receipt['compaction'] = {
+                        'summary': 'Earlier fact: current owner Nila.',
+                        'retained_turns': []}
+                return receipt
+            config = {'gateway': 'http://gateway.local', 'allow_ready_routes': True,
+                      'allowed_profiles': ['none']}
+            api = RunAPI(root / 'state', engine, config)
+            base = {'schema': SCHEMA, 'conversation_id': 'main-chat',
+                    'route': 'gpu-rig/local', 'expected_model': 'local',
+                    'tool_profile': 'none', 'context_policy': 'conversation'}
+            first = api.submit({**base, 'request_id': 'first', 'prompt': 'first'})['run_id']
+            api.execute(first)
+            second = api.submit({**base, 'request_id': 'second', 'prompt': 'second',
+                                 'parent_run_id': first})['run_id']
+            api.execute(second)
+            restarted = RunAPI(root / 'state', engine, config)
+            third = restarted.submit({**base, 'request_id': 'third', 'prompt': 'third',
+                                      'parent_run_id': second})['run_id']
+            restarted.execute(third)
+            self.assertEqual(observed[-1]['prior_turns'],
+                             [{'prompt': 'Earlier conversation checkpoint',
+                               'answer': 'Earlier fact: current owner Nila.'},
+                              {'prompt': 'second', 'answer': 'answer-second'}])
+
     def test_model_receives_prior_exchange_before_current_task(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -216,6 +249,52 @@ class SelectedRunTests(unittest.TestCase):
             self.assertEqual(messages[-2]['content'], 'answer-5')
             self.assertEqual(receipt['prior_turns_used'], 6)
 
+    def test_conversation_policy_compacts_and_keeps_recent_turn(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            calls = []
+            def complete(*args):
+                calls.append(args)
+                if len(calls) == 1:
+                    return {'model': 'local-test', 'choices': [{
+                        'finish_reason': 'stop',
+                        'message': {'content': 'Current owner: Nila. Old owner: Mara (obsolete).'}}],
+                        'usage': {'prompt_tokens': 120, 'completion_tokens': 20}}
+                return {'model': 'local-test', 'choices': [{
+                    'finish_reason': 'stop', 'message': {'content': 'done'}}]}
+            roster = {'data': [{'id': 'gpu-rig/local-test', 'model': 'local-test',
+                                'context_length': 4096, 'output_limit': 1024}]}
+            turns = [{'prompt': f'fact-{i} ' + 'p' * 500,
+                      'answer': 'a' * 500} for i in range(7)]
+            with patch('project_agent.fetch_ready_roster', return_value=roster):
+                receipt = run_agent(
+                    gateway='http://fake', route='gpu-rig/local-test',
+                    expected_model='local-test', prompt='current', agent_type='coding',
+                    tool_profile='none', context_policy='conversation',
+                    journal_root=Path(temporary), prior_turns=turns,
+                    complete=complete)
+            self.assertEqual(receipt['run']['phase'], 'succeeded')
+            self.assertEqual(receipt['context_policy'], 'conversation')
+            self.assertIsNotNone(receipt['compaction'])
+            self.assertGreater(receipt['compaction']['source_turns'], 0)
+            self.assertEqual(receipt['compaction']['retained_turns'][-1], turns[-1])
+            self.assertIn('Nila', calls[-1][2][2]['content'])
+            self.assertEqual(calls[-1][2][-2]['content'], turns[-1]['answer'])
+            agent_calls = []
+            def agent_complete(*args):
+                agent_calls.append(args)
+                return {'model': 'local-test', 'choices': [{
+                    'finish_reason': 'stop', 'message': {'content': 'done'}}]}
+            with patch('project_agent.fetch_ready_roster', return_value=roster):
+                agent_receipt = run_agent(
+                    gateway='http://fake', route='gpu-rig/local-test',
+                    expected_model='local-test', prompt='current', agent_type='coding',
+                    tool_profile='none', context_policy='agent',
+                    journal_root=Path(temporary), prior_turns=turns[:5],
+                    complete=agent_complete)
+            self.assertIsNone(agent_receipt['compaction'])
+            self.assertEqual(len(agent_calls), 1)
+
+
     def test_context_overflow_fails_without_silently_dropping_turns(self):
         with tempfile.TemporaryDirectory() as temporary:
             roster = {'data': [{'id': 'gpu-rig/local-test', 'model': 'local-test',
@@ -224,11 +303,9 @@ class SelectedRunTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'conversation exceeds'):
                     run_agent(
                         gateway='http://fake', route='gpu-rig/local-test',
-                        expected_model='local-test', prompt='current',
+                        expected_model='local-test', prompt='x' * 30000,
                         agent_type='coding', tool_profile='none',
                         journal_root=Path(temporary),
-                        prior_turns=[{'prompt': 'old fact: ' + 'x' * 10000,
-                                      'answer': 'acknowledged'}],
                         complete=lambda *args: self.fail('provider must not be called'))
 
 
