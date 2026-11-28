@@ -24,7 +24,7 @@ TOOLS = [
          'path': {'type': 'string', 'maxLength': 300},
          'max_results': {'type': 'integer', 'minimum': 1, 'maximum': 100}},
          'required': ['name_contains'], 'additionalProperties': False}},
-    {'name': 'read_workspace_file', 'description': 'Read a requested UTF-8 line range from one workspace file. Search first, then read around matching lines. requested_range_complete=true means the requested range was delivered; do not page adjacent ranges merely because more_lines_after or truncated is true.',
+    {'name': 'read_workspace_file', 'description': 'Read a requested UTF-8 line range from one workspace file. Search first, then read around matching lines. sha256 is the complete file version token for guarded edits. requested_range_complete=true means the requested range was delivered; do not page adjacent ranges merely because more_lines_after or truncated is true.',
      'annotations': {'readOnlyHint': True}, 'inputSchema': {'type': 'object', 'properties': {
          'path': {'type': 'string', 'minLength': 1, 'maxLength': 300},
          'start_line': {'type': 'integer', 'minimum': 1, 'maximum': 50000},
@@ -187,7 +187,12 @@ def call(root: Path, name: str, args: dict) -> dict:
             joined = ''.join(content)
             if '\x00' in joined:
                 raise ValueError('binary workspace file is unavailable')
-            return {'path': relative, 'content': joined, 'start_line': start_line,
+            snapshot_fd = os.dup(fd)
+            os.lseek(snapshot_fd, 0, os.SEEK_SET)
+            with os.fdopen(snapshot_fd, 'rb') as snapshot_source:
+                file_sha256 = hashlib.sha256(snapshot_source.read()).hexdigest()
+            return {'path': relative, 'content': joined, 'sha256': file_sha256,
+                    'start_line': start_line,
                     'end_line': end_line, 'requested_range_complete': not content_truncated,
                     'more_lines_after': more_lines_after,
                     'truncated': content_truncated or more_lines_after}

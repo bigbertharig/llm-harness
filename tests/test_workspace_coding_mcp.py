@@ -1,4 +1,5 @@
 import hashlib
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -19,6 +20,9 @@ class WorkspaceCodingTests(unittest.TestCase):
             target = root / 'example.txt'
             target.write_text('before\n', encoding='utf-8')
             old_hash = hashlib.sha256(target.read_bytes()).hexdigest()
+            from workspace_read_mcp import call as read_call
+            self.assertEqual(read_call(root, 'read_workspace_file', {'path': 'example.txt'})['sha256'],
+                             old_hash)
             result = call(root, {'syntax': [sys.executable, '-c', 'print("ok")']},
                           'replace_workspace_text', {
                               'path': 'example.txt', 'expected_sha256': old_hash,
@@ -34,6 +38,25 @@ class WorkspaceCodingTests(unittest.TestCase):
                          'run_workspace_check', {'name': 'syntax'})
             self.assertEqual(check['exit_code'], 0)
             self.assertIn('ok', check['stdout'])
+
+    def test_git_status_and_diff_after_versioned_edit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            subprocess.run(['git', 'init', '-q', str(root)], check=True)
+            target = root / 'example.txt'
+            target.write_text('before\n', encoding='utf-8')
+            subprocess.run(['git', '-C', str(root), 'add', 'example.txt'], check=True)
+            subprocess.run(['git', '-C', str(root), '-c', 'user.name=Test',
+                            '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'base'], check=True)
+            old_hash = hashlib.sha256(target.read_bytes()).hexdigest()
+            call(root, {}, 'replace_workspace_text', {
+                'path': 'example.txt', 'expected_sha256': old_hash,
+                'old_text': 'before', 'new_text': 'after'})
+            status = call(root, {}, 'get_workspace_git_status', {})
+            diff = call(root, {}, 'get_workspace_git_diff', {'path': 'example.txt'})
+            self.assertIn('example.txt', status['output'])
+            self.assertIn('+after', diff['output'])
+            self.assertIn('-before', diff['output'])
 
     def test_path_escape_and_symlink_are_refused(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -87,6 +110,64 @@ class SelectedRunTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'not configured'):
                 api.submit({**task, 'request_id': 'outside',
                             'workspace_root': str(root)})
+
+
+    def test_continuation_is_durable_and_scoped_to_conversation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = root / 'project'
+            project.mkdir()
+            observed = []
+            def engine(**kwargs):
+                observed.append(kwargs)
+                return {'run': {'phase': 'succeeded'}, 'answer': 'answer-' + kwargs['prompt']}
+            config = {'gateway': 'http://gateway.local', 'allow_ready_routes': True,
+                      'allowed_workspace_roots': [str(project)], 'allowed_profiles': ['none']}
+            state = root / 'state'
+            api = RunAPI(state, engine, config)
+            base = {'schema': SCHEMA, 'route': 'gpu-rig/local', 'expected_model': 'local',
+                    'workspace_root': str(project), 'conversation_id': 'chat-one',
+                    'tool_profile': 'none'}
+            first = api.submit({**base, 'request_id': 'turn-one', 'prompt': 'first'})['run_id']
+            api.execute(first)
+            restarted = RunAPI(state, engine, config)
+            second_task = {**base, 'request_id': 'turn-two', 'prompt': 'second',
+                           'parent_run_id': first}
+            second = restarted.submit(second_task)['run_id']
+            restarted.execute(second)
+            self.assertEqual(observed[-1]['prior_turns'],
+                             [{'prompt': 'first', 'answer': 'answer-first'}])
+            with self.assertRaisesRegex(ValueError, 'another conversation'):
+                restarted.submit({**second_task, 'request_id': 'wrong-owner',
+                                  'conversation_id': 'chat-two'})
+            with self.assertRaisesRegex(ValueError, 'completed successful'):
+                restarted.submit({**second_task, 'request_id': 'missing-parent',
+                                  'parent_run_id': 'missing'})
+
+    def test_model_receives_prior_exchange_before_current_task(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            calls = []
+            def complete(*args):
+                calls.append(args)
+                return {'model': 'local-test', 'choices': [{
+                    'finish_reason': 'stop', 'message': {'content': 'done'}}]}
+            roster = {'data': [{'id': 'gpu-rig/local-test', 'model': 'local-test',
+                                'context_length': 8192, 'output_limit': 1024}]}
+            with patch('project_agent.fetch_ready_roster', return_value=roster):
+                receipt = run_agent(
+                    gateway='http://fake', route='gpu-rig/local-test',
+                    expected_model='local-test', prompt='current', agent_type='coding',
+                    tool_profile='none', journal_root=root,
+                    prior_turns=[{'prompt': 'previous', 'answer': 'earlier result'}],
+                    complete=complete)
+            messages = calls[0][2]
+            self.assertEqual([row['role'] for row in messages[:4]],
+                             ['system', 'user', 'assistant', 'user'])
+            self.assertEqual(messages[1]['content'], 'previous')
+            self.assertEqual(messages[2]['content'], 'earlier result')
+            self.assertIn('current', messages[3]['content'])
+            self.assertEqual(receipt['prior_turns_used'], 1)
 
 
 

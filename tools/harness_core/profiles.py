@@ -29,6 +29,7 @@ TOOL_PROFILES = {
     "workspace_coding": ToolProfile("workspace_coding", frozenset({
         "list_workspace_files", "find_workspace_files", "read_workspace_file",
         "read_workspace_document_chunk", "search_workspace_text",
+        "get_workspace_git_status", "get_workspace_git_diff",
         "replace_workspace_text", "write_workspace_file", "run_workspace_check",
     }), "repository", requires_workspace=True, permits_writes=True),
     "google_workspace": ToolProfile("google_workspace", frozenset({

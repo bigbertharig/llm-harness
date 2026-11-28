@@ -38,6 +38,12 @@ Optional `--tool-selector jev` uses TypeSafe's hosted API (`TYPESAFE_API_KEY`)
 to narrow advertised tools; the default remains model selection. This needs
 internet, so offline use would require a future local decision-model adapter.
 
+The `workspace_coding` profile also exposes Git status and diff. Guarded edits use
+`sha256` from a workspace read. A named check should run after the final edit; the run
+receipt reports `verification.status` (`passed`, `failed`, `not_checked`, or
+`stale_after_write`) so a check performed before the last edit is not mistaken for
+final-state validation.
+
 `harness-workspace-read --root PROJECT` and `harness-workspace-git --root PROJECT` expose
 independent stdio MCP tools. External coding engines can use them without the Harness loop.
 Other installed scripts resolve through `llm_harness.tools.script(name)`; no sibling source
@@ -75,6 +81,11 @@ point `HARNESS_SERVICE_URL` at this service and use the same service token.
 The service configuration owns provider credentials and tool commands. With
 `allow_ready_routes`, a submission selects only a roster-validated ready route/model;
 with `allowed_workspace_roots`, it selects only a configured workspace.
+
+A Coding run may send `parent_run_id` to continue a successful run in the same
+conversation and workspace. Harness stores the link and supplies up to four recent
+user/assistant exchanges (12,000 characters total) to the model; each run keeps its
+own durable receipt. This is bounded turn continuity, not automatic compaction.
 
 The `harness-control/1` API supports `POST /v1/runs`, `GET /v1/runs/ID`,
 `GET /v1/runs/ID/events?after=N`, and `POST /v1/runs/ID/{input,cancel,resume}`.

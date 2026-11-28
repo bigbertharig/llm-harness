@@ -98,7 +98,7 @@ def _message_text(packet: dict) -> str:
 
 def _tool_instruction(server: dict, max_tool_calls: int) -> str:
     names = ['mcp__' + server['name'] + '__' + name for name in server['tools']]
-    return (f' TOOL PHASE CONTRACT: Prefer native function calls and request at most '
+    instruction = (f' TOOL PHASE CONTRACT: Prefer native function calls and request at most '
             f'{MAX_TOOL_BATCH_CALLS} independent native tools in one turn. If native calls are unavailable, '
             'the entire response must be one complete JSON object shaped as '
             '{"name":"ALLOWED_NAME","arguments":{...}}. Do not use Markdown, XML, prose, or a '
@@ -107,6 +107,13 @@ def _tool_instruction(server: dict, max_tool_calls: int) -> str:
             'Never repeat a completed call, invent a tool result, or continue '
             'reading after enough evidence exists. FINAL PHASE CONTRACT: after sufficient results arrive, '
             'answer the assignment in prose and emit no tool request.')
+
+    if server.get('name') == 'workspace_coding':
+        instruction += (' For guarded edits, use the sha256 field returned by read_workspace_file '
+                        'or read_workspace_document_chunk, never the provenance hash of a tool result. '
+                        'After the final write, run the relevant configured check and inspect Git diff. '
+                        'If either is omitted, report that final-state verification is incomplete.')
+    return instruction
 
 
 def _openai_tools(server: dict | None) -> list[dict]:
@@ -251,6 +258,26 @@ def _document_evidence_coverage(tool_calls: list[dict]) -> list[dict]:
     return summaries
 
 
+
+
+def coding_verification(calls: list[dict]) -> dict:
+    """Report whether a successful named check followed the last successful edit."""
+    writes = [index for index, row in enumerate(calls)
+              if row.get('tool') in ('replace_workspace_text', 'write_workspace_file')
+              and not row.get('is_error')]
+    if not writes:
+        return {'status': 'no_write'}
+    last_write = writes[-1]
+    checks = [row for row in calls[last_write + 1:]
+              if row.get('tool') == 'run_workspace_check' and not row.get('is_error')]
+    if not checks:
+        return {'status': 'stale_after_write' if any(
+            row.get('tool') == 'run_workspace_check' for row in calls[:last_write]) else 'not_checked'}
+    latest = checks[-1]
+    return {'status': 'passed' if latest.get('exit_code') == 0 else 'failed',
+            'check': latest.get('arguments', {}).get('name'),
+            'exit_code': latest.get('exit_code')}
+
 def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
               agent_type: str, tool_profile: str = 'none', tool_server: dict | None = None,
               workspace_root: Path | None = None, max_tokens: int = 1024,
@@ -261,7 +288,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
               journal_root: Path | None = None,
               retry_wait=time.sleep,
               complete=_completion, provider: dict | None = None, run_id: str | None = None, input_source=None,
-              tool_selector=None) -> dict:
+              tool_selector=None, prior_turns=None) -> dict:
     """Run a bounded direct loop and return a model-neutral execution receipt."""
     if type(max_tokens) is not int or not 1 <= max_tokens <= MAX_AGENT_OUTPUT_TOKENS:
         raise ValueError(f'max_tokens must be between 1 and {MAX_AGENT_OUTPUT_TOKENS}')
@@ -312,8 +339,23 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         system += _tool_instruction(tool_server, max_tool_calls)
     advertised_tools = _openai_tools(tool_server)
     external_messages, external_provenance = prepare_evidence(evidence_blocks)
+    prior_turns = prior_turns or []
+    if not isinstance(prior_turns, list) or len(prior_turns) > 4:
+        raise ValueError('invalid prior-turn context')
+    prior_messages = []
+    for turn in prior_turns:
+        if (not isinstance(turn, dict) or
+                not isinstance(turn.get('prompt'), str) or
+                not isinstance(turn.get('answer'), str) or
+                len(turn['prompt']) > 3000 or len(turn['answer']) > 3000):
+            raise ValueError('invalid prior-turn exchange')
+        prior_messages.extend([
+            {'role': 'user', 'content': turn['prompt']},
+            {'role': 'assistant', 'content': turn['answer']}])
+    current_envelope = child_task_envelope(prompt)
     messages = [{'role': 'system', 'content': system},
-                {'role': 'user', 'content': child_task_envelope(prompt)},
+                *prior_messages,
+                {'role': 'user', 'content': current_envelope},
                 *external_messages]
     recorder = RunRecorder(journal_root, run_id=run_id, conversation_id=conversation_id)
     recorder.emit('run.started', payload={'engine': 'big-bertha-project-agent'})
@@ -621,6 +663,8 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             tool_calls.append({'tool': name, 'arguments': arguments, 'is_error': is_error,
                                'result_shape': result_shape,
                                'evidence': _evidence_metadata(name, driver_evidence)})
+            if name == 'run_workspace_check' and isinstance(driver_evidence, dict):
+                tool_calls[-1]['exit_code'] = driver_evidence.get('exit_code')
             admitted = admit_evidence({'source': profile_contract.evidence_source,
                                        'origin': f'{tool_server["name"]}/{name}/{call_id}',
                                        'content': evidence})
@@ -723,6 +767,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         else:
             recorder.emit('run.succeeded', payload={'reason': 'completed'})
     duration = round(time.monotonic() - started, 2)
+    verification = coding_verification(tool_calls) if tool_profile == 'workspace_coding' else None
     return {'engine': 'big-bertha-project-agent', 'engine_version': 2,
             'task_contract_version': CONTRACT_VERSION,
             'route': route, 'model': expected_model, 'tool_profile': tool_profile,
@@ -736,7 +781,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 'task_characters': len(prompt),
                 'task_bytes': len(prompt.encode('utf-8')),
                 'system_prompt_bytes': len(system.encode('utf-8')),
-                'user_envelope_bytes': len(messages[1]['content'].encode('utf-8')),
+                'user_envelope_bytes': len(current_envelope.encode('utf-8')),
                 'output_limit_hit': any(row.get('finish_reason') == 'length' for row in steps),
                 'model_tool_steps_max': max_tool_steps,
                 'model_finalization_steps_max': MAX_FINALIZATION_STEPS,
@@ -752,8 +797,10 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 'task_timeout_seconds': timeout_s,
             },
             'answer': answer, 'error': error, 'duration_s': duration,
+            'verification': verification,
             'run': recorder.receipt(), 'evidence_provenance': external_provenance,
             'model_steps': len(steps), 'model_attempts': len(model_calls),
+            'prior_turns_used': len(prior_turns),
             'max_model_steps': max_model_steps,
             'model_call_receipts': model_calls,
             'tool_selector': selector_mode,

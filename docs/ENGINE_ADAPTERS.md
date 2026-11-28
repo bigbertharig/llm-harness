@@ -172,8 +172,8 @@ Gateway-free identity, version, grant, cancellation, ordered-event, terminal-rec
 and brokered workspace-tool fixtures. The adapter fixture is part of the named
 `agent_runtime` suite.
 
-Next, test the owned Harness and Gateway client together at the run boundary, then
-keep improving our broker, budgets, recovery, and provider/tool adapters. For any
+The owned Harness and Gateway client have been tested together at the run boundary.
+Continue improving our broker, budgets, recovery, and provider/tool adapters. For any
 specific external harness, record which compatibility level it reaches and add only
 the translation that integration needs. Full substitution is an optional later claim,
 not a prerequisite for reusing models or tools.

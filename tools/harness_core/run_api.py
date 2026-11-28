@@ -52,7 +52,7 @@ class RunAPI:
         request_id = identifier(task.get('request_id'))
         if task.get('conversation_id') is not None:
             identifier(task['conversation_id'])
-        if set(task) - {'schema', 'request_id', 'prompt', 'agent_type', 'tool_profile', 'max_tokens', 'timeout_s', 'max_tool_calls', 'route', 'expected_model', 'workspace_root', 'conversation_id'}:
+        if set(task) - {'schema', 'request_id', 'prompt', 'agent_type', 'tool_profile', 'max_tokens', 'timeout_s', 'max_tool_calls', 'route', 'expected_model', 'workspace_root', 'conversation_id', 'parent_run_id'}:
             raise ValueError('unsupported task fields; provider, workspace and tools are service configuration')
         route, model = task.get('route'), task.get('expected_model')
         if (route is None) != (model is None):
@@ -71,6 +71,19 @@ class RunAPI:
             allowed = {str(Path(root).resolve(strict=True)) for root in self.configuration.get('allowed_workspace_roots', [])}
             if str(Path(workspace).resolve(strict=True)) not in allowed:
                 raise ValueError('workspace is not configured for Harness runs')
+        parent_id = task.get('parent_run_id')
+        if parent_id is not None:
+            identifier(parent_id)
+            if not task.get('conversation_id'):
+                raise ValueError('continuation requires a conversation_id')
+            with self.connect() as db:
+                parent = db.execute('SELECT task,state FROM runs WHERE id=?', (parent_id,)).fetchone()
+            if parent is None or parent[1] != 'succeeded':
+                raise ValueError('continuation parent must be a completed successful run')
+            parent_task = json.loads(parent[0])
+            if (parent_task.get('conversation_id') != task['conversation_id'] or
+                    parent_task.get('workspace_root') != workspace):
+                raise ValueError('continuation parent belongs to another conversation or workspace')
         prompt = task.get('prompt')
         if not isinstance(prompt, str) or not 1 <= len(prompt) <= 100000:
             raise ValueError('prompt must be 1..100000 characters')
@@ -158,6 +171,32 @@ class RunAPI:
                 thread.start()
         return self.status(run_id)
 
+    def prior_turns(self, task, *, max_turns=4, max_chars=12000):
+        """Rebuild a bounded linear path from durable completed run records."""
+        parent_id = task.get('parent_run_id')
+        turns = []
+        seen = set()
+        with self.connect() as db:
+            while parent_id and len(turns) < max_turns:
+                if parent_id in seen:
+                    raise ValueError('continuation cycle')
+                seen.add(parent_id)
+                row = db.execute('SELECT task,state,receipt FROM runs WHERE id=?', (parent_id,)).fetchone()
+                if row is None or row[1] != 'succeeded' or not row[2]:
+                    raise ValueError('continuation parent is unavailable')
+                prior_task, receipt = json.loads(row[0]), json.loads(row[2])
+                if (prior_task.get('conversation_id') != task.get('conversation_id') or
+                        prior_task.get('workspace_root') != task.get('workspace_root')):
+                    raise ValueError('continuation path changed conversation or workspace')
+                turns.append({'prompt': prior_task['prompt'][-3000:],
+                              'answer': receipt.get('answer', '')[-3000:]})
+                parent_id = prior_task.get('parent_run_id')
+        turns.reverse()
+        # Preserve the newest complete exchanges; never cut through a message.
+        while turns and sum(len(row['prompt']) + len(row['answer']) for row in turns) > max_chars:
+            turns.pop(0)
+        return turns
+
     def execute(self, run_id):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -176,6 +215,7 @@ class RunAPI:
             settings = {k:v for k,v in self.configuration.items() if k not in ('allowed_profiles','tool_servers','allow_ready_routes','allowed_workspace_roots')}
             profile = task.get('tool_profile','none')
             settings['agent_type'] = task.get('agent_type', 'coding')
+            settings['prior_turns'] = self.prior_turns(task)
             settings['tool_server'] = self.configuration.get('tool_servers', {}).get(profile)
             if task.get('workspace_root') is not None:
                 settings['workspace_root'] = Path(task['workspace_root']).resolve(strict=True)
@@ -184,7 +224,7 @@ class RunAPI:
             if route := task.get('route'):
                 settings['route'] = route
                 settings['expected_model'] = task['expected_model']
-            receipt = self.engine(**settings, **{k:v for k,v in task.items() if k not in ('schema','request_id','agent_type','route','expected_model','workspace_root')},
+            receipt = self.engine(**settings, **{k:v for k,v in task.items() if k not in ('schema','request_id','agent_type','route','expected_model','workspace_root','parent_run_id')},
                                   run_id=run_id, journal_root=self.root/'journals',
                                   cancel_path=self.root/(run_id+'.cancel'), input_source=inputs)
             state = receipt['run']['phase']

@@ -22,6 +22,19 @@ def packet(text, finish='stop', usage=None, **metadata):
 
 
 class ProjectAgentTests(unittest.TestCase):
+    def test_coding_verification_tracks_final_edit(self):
+        verify = project_agent.coding_verification
+        write = {'tool': 'write_workspace_file', 'is_error': False}
+        check = {'tool': 'run_workspace_check', 'is_error': False,
+                 'arguments': {'name': 'unit'}, 'exit_code': 0}
+        self.assertEqual(verify([])['status'], 'no_write')
+        self.assertEqual(verify([write])['status'], 'not_checked')
+        self.assertEqual(verify([check, write])['status'], 'stale_after_write')
+        self.assertEqual(verify([write, check]),
+                         {'status': 'passed', 'check': 'unit', 'exit_code': 0})
+        self.assertEqual(verify([write, {**check, 'exit_code': 1}])['status'], 'failed')
+        self.assertEqual(verify([write, check, write])['status'], 'stale_after_write')
+
     def test_contradictory_conversations_never_share_model_context_or_receipts(self):
         requests = []
         def complete(_gateway, _route, messages, *_args):

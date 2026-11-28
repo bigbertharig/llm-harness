@@ -10,6 +10,10 @@ import subprocess
 import sys
 from uuid import uuid4
 from workspace_read_mcp import TOOLS as READ_TOOLS, call as read_call, _visible_parts
+from workspace_git_mcp import TOOLS as GIT_TOOLS, call as git_call
+
+CODING_GIT_TOOLS = [item for item in GIT_TOOLS
+                    if item['name'] in {'get_workspace_git_status', 'get_workspace_git_diff'}]
 
 EDIT_TOOLS = [
     {'name': 'replace_workspace_text',
@@ -35,7 +39,7 @@ EDIT_TOOLS = [
          'name': {'type': 'string', 'minLength': 1, 'maxLength': 60}},
          'required': ['name'], 'additionalProperties': False}},
 ]
-TOOLS = READ_TOOLS + EDIT_TOOLS
+TOOLS = READ_TOOLS + CODING_GIT_TOOLS + EDIT_TOOLS
 
 
 def parent_fd(root, raw):
@@ -109,6 +113,8 @@ def write_file(root, raw, expected, content):
 def call(root, checks, name, args):
     if name in {item['name'] for item in READ_TOOLS}:
         return read_call(root, name, args)
+    if name in {item['name'] for item in CODING_GIT_TOOLS}:
+        return git_call(root, name, args)
     if not isinstance(args, dict):
         raise ValueError('invalid arguments')
     if name == 'write_workspace_file':
