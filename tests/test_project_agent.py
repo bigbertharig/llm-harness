@@ -597,6 +597,54 @@ class ProjectAgentTests(unittest.TestCase):
         self.assertIn('untrusted_evidence', seen[1][0][-1]['content'])
         self.assertEqual(result['tool_call_summary'][0]['tool'], 'read_workspace_file')
 
+    def test_tool_schema_rejects_missing_required_arguments_before_dispatch(self):
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
+                  'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
+                                   'inputSchema': {'type': 'object', 'properties': {
+                                       'path': {'type': 'string', 'minLength': 1}},
+                                       'required': ['path'], 'additionalProperties': False}}],
+                  'command': ['fixture']}
+        request = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
+                              'arguments': {}})
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool') as call:
+            root = Path(temp)
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='inspect', agent_type='coding', tool_profile='workspace_read',
+                tool_server=server, workspace_root=root, journal_root=root / 'journal',
+                complete=lambda *_: packet(request))
+            events = [json.loads(line) for line in
+                      Path(result['run']['journal_ref']).read_text().splitlines()]
+        call.assert_not_called()
+        self.assertEqual(result['run']['phase'], 'failed')
+        self.assertIn('advertised input schema', result['error'])
+        event_types = [row['type'] for row in events]
+        self.assertIn('tool.failed', event_types)
+        self.assertNotIn('tool.executing', event_types)
+
+    def test_tool_schema_accepts_valid_arguments(self):
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
+                  'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
+                                   'inputSchema': {'type': 'object', 'properties': {
+                                       'path': {'type': 'string', 'minLength': 1}},
+                                       'required': ['path'], 'additionalProperties': False}}],
+                  'command': ['fixture']}
+        request = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
+                              'arguments': {'path': 'README.md'}})
+        replies = iter([packet(request), packet('Grounded answer.')])
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool', return_value={
+                 'isError': False, 'structuredContent': {'path': 'README.md'}}) as call:
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='inspect', agent_type='coding', tool_profile='workspace_read',
+                tool_server=server, workspace_root=Path(temp), complete=lambda *_: next(replies))
+        call.assert_called_once()
+        self.assertIsNone(result['error'])
+
     def test_similarly_named_native_tool_is_rejected_without_execution(self):
         native = {'choices': [{'message': {'role': 'assistant', 'content': None,
                   'tool_calls': [{'id': 'call_wrong', 'type': 'function', 'function': {

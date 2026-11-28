@@ -12,6 +12,9 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from jsonschema import ValidationError
+from jsonschema.validators import validator_for
+
 from child_policy import (MAX_FINALIZATION_STEPS, MAX_MODEL_STEPS, MAX_TOOL_BATCH_CALLS, MAX_TOOL_ERRORS,
                           ToolBudget, validate_request)
 from harness_core import (DocumentDriverError, MCPResultError, RunRecorder, admit_evidence,
@@ -114,6 +117,36 @@ def _openai_tools(server: dict | None) -> list[dict]:
         'description': by_name[name].get('description', ''),
         'parameters': by_name[name].get('inputSchema', {'type': 'object'}),
     }} for name in server['tools']]
+
+
+def _validate_tool_arguments(server: dict, name: str, arguments: dict) -> None:
+    """Reject malformed model arguments before the MCP dispatch boundary."""
+    definitions = server.get('definitions') or []
+    definition = next((row for row in definitions
+                       if isinstance(row, dict) and row.get('name') == name), None)
+    if definition is None:
+        raise ValueError('tool definition is missing')
+    schema = definition.get('inputSchema', {'type': 'object'})
+    if not isinstance(schema, dict):
+        raise ValueError('tool input schema is invalid')
+    # Reviewed tool schemas are local; never resolve a remote schema during a call.
+    def check_refs(value):
+        if isinstance(value, dict):
+            ref = value.get('$ref')
+            if ref is not None and (not isinstance(ref, str) or not ref.startswith('#')):
+                raise ValueError('external tool schema references are unsupported')
+            for item in value.values():
+                check_refs(item)
+        elif isinstance(value, list):
+            for item in value:
+                check_refs(item)
+    check_refs(schema)
+    try:
+        validator_type = validator_for(schema)
+        validator_type.check_schema(schema)
+        validator_type(schema).validate(arguments)
+    except ValidationError as exc:
+        raise ValueError('tool arguments do not match advertised input schema') from exc
 
 
 def _native_requests(packet: dict, server: dict) -> list[tuple[str, dict, str]]:
@@ -522,6 +555,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             try:
                 budget.before_call()
                 validate_request(tool_profile, name, arguments, workspace_root)
+                _validate_tool_arguments(tool_server, name, arguments)
                 recorder.emit('tool.validated', tool_call_id=call_id, payload={})
                 recorder.emit('tool.approved', tool_call_id=call_id,
                               approval_id=f'profile-{tool_profile}',

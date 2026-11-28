@@ -12,7 +12,8 @@ demonstrated.
 local children now call prepared Gateway routes through this loop rather than
 launching an external candidate harness. Gateway admission and Orchestration
 placement remain outside the loop. The loop verifies ready route identity,
-advertises only reviewed MCP schemas, validates every call, limits each proposed
+advertises only reviewed MCP schemas, checks model arguments against those schemas
+before dispatch, validates every call against its grant, limits each proposed
 batch to four calls and each run to six tool-capable model turns plus one tool-free finalization turn, rejects duplicate execution,
 forces a final tool-free synthesis turn when a model replays a completed call,
 and records a model-neutral receipt. This is the production development path.
@@ -32,7 +33,12 @@ Candidate controllers and their historical runners remain together in
 `research/external_harnesses/` for reference. That directory is optional: the
 runtime, public tool catalog, default tests, and project-owned trials must still
 work if it is deleted. A useful candidate behavior enters the active engine only
-through an explicit shared contract and deterministic tests.
+through an explicit shared contract and deterministic tests. The six-candidate
+trials reinforced strict MCP result normalization, exact tool grants, and bounded
+delegation, which the owned loop already has. Missing required tool arguments in
+those trials motivated the pre-dispatch schema check. Repeated compaction improved
+long-session fact retention in some candidates, but other runs lost facts or exceeded
+time budgets; it needs a bounded summary policy and retention tests before adoption.
 
 The custom engine is the maintained default, with first-class connections to the other
 repositories. Those connections are modular at the model endpoint, standalone MCP tool,
