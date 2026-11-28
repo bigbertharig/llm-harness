@@ -249,6 +249,36 @@ class SelectedRunTests(unittest.TestCase):
             self.assertEqual(messages[-2]['content'], 'answer-5')
             self.assertEqual(receipt['prior_turns_used'], 6)
 
+    def test_conversation_can_answer_without_tools_while_agent_stays_strict(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            calls = []
+            def complete(*args):
+                calls.append(args)
+                return {'model': 'local-test', 'choices': [{
+                    'finish_reason': 'stop', 'message': {'content': 'ready'}}]}
+            roster = {'data': [{'id': 'gpu-rig/local-test', 'model': 'local-test',
+                                'context_length': 8192, 'output_limit': 1024}]}
+            server = {'name': 'workspace_coding', 'tools': {'list_workspace_files': {}},
+                      'definitions': [{'name': 'list_workspace_files',
+                                       'description': 'List files',
+                                       'inputSchema': {'type': 'object'}}],
+                      'command': ['unused']}
+            common = {'gateway': 'http://fake', 'route': 'gpu-rig/local-test',
+                      'expected_model': 'local-test', 'prompt': 'Reply ready',
+                      'agent_type': 'coding', 'tool_profile': 'workspace_coding',
+                      'tool_server': server, 'workspace_root': Path(temporary),
+                      'journal_root': Path(temporary), 'complete': complete}
+            with patch('project_agent.fetch_ready_roster', return_value=roster):
+                conversation = run_agent(**common, context_policy='conversation')
+                self.assertEqual(conversation['run']['phase'], 'succeeded')
+                self.assertEqual(conversation['answer'], 'ready')
+                self.assertEqual(calls[0][2][-1]['content'], 'Reply ready')
+                self.assertEqual(len(calls), 1)
+                agent = run_agent(**common, context_policy='agent')
+                self.assertEqual(agent['run']['phase'], 'failed')
+                self.assertEqual(agent['error'], 'model did not execute an allowed tool')
+                self.assertGreater(len(calls), 1)
+
     def test_conversation_policy_compacts_and_keeps_recent_turn(self):
         with tempfile.TemporaryDirectory() as temporary:
             calls = []
@@ -293,6 +323,24 @@ class SelectedRunTests(unittest.TestCase):
                     complete=agent_complete)
             self.assertIsNone(agent_receipt['compaction'])
             self.assertEqual(len(agent_calls), 1)
+            pressured_calls = []
+            def pressured_complete(*args):
+                pressured_calls.append(args)
+                return {'model': 'local-test', 'choices': [{
+                    'finish_reason': 'stop',
+                    'message': {'content': ('Current owner is Nila.' if len(pressured_calls) == 1
+                                            else 'done')}}]}
+            with patch('project_agent.fetch_ready_roster', return_value=roster):
+                pressured_agent = run_agent(
+                    gateway='http://fake', route='gpu-rig/local-test',
+                    expected_model='local-test', prompt='current', agent_type='coding',
+                    tool_profile='none', context_policy='agent',
+                    journal_root=Path(temporary), prior_turns=turns,
+                    complete=pressured_complete)
+            self.assertEqual(pressured_agent['run']['phase'], 'succeeded')
+            self.assertIsNotNone(pressured_agent['compaction'])
+            self.assertGreater(pressured_agent['compaction']['source_turns'], 0)
+            self.assertEqual(len(pressured_calls), 2)
 
 
     def test_context_overflow_fails_without_silently_dropping_turns(self):

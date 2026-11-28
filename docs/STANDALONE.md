@@ -86,7 +86,9 @@ A Coding run may send `parent_run_id` to continue a successful run in the same
 conversation and workspace. Harness stores the link and reconstructs completed user/assistant exchanges
 for each new model request; each run keeps its own durable receipt. A submitted run
 may set `context_policy` to `conversation` for ongoing main chats or `agent`
-(the default) for bounded task agents. Conversation policy starts compaction at
+(the default) for bounded task agents. Conversation runs can answer directly
+when no tool is needed; task-agent runs keep the tool-use requirement when
+a tool profile is granted. Conversation policy starts compaction at
 roughly 80% of the selected model context; agent policy waits until roughly 90%
 but can still compact and continue a long task. Both retain recent complete
 exchanges and summarize older history on the same selected route. The original
