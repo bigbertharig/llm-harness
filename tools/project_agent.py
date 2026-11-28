@@ -46,6 +46,10 @@ class AgentLoopError(RuntimeError):
     """A bounded agent contract failed."""
 
 
+class ToolArgumentSchemaError(ValueError):
+    """Model tool arguments did not satisfy the advertised MCP schema."""
+
+
 def _completion(gateway: str, route: str, messages: list[dict], max_tokens: int,
                 timeout: float, api_key: str | None = None,
                 tools: list[dict] | None = None, *, require_ready: bool = True) -> dict:
@@ -146,7 +150,7 @@ def _validate_tool_arguments(server: dict, name: str, arguments: dict) -> None:
         validator_type.check_schema(schema)
         validator_type(schema).validate(arguments)
     except ValidationError as exc:
-        raise ValueError('tool arguments do not match advertised input schema') from exc
+        raise ToolArgumentSchemaError('tool arguments do not match advertised input schema') from exc
 
 
 def _native_requests(packet: dict, server: dict) -> list[tuple[str, dict, str]]:
@@ -319,6 +323,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     model_calls: list[dict] = []
     selector_calls: list[dict] = []
     repair_attempted = False
+    schema_repair_attempted = False
     truncation_repair_attempted = False
     tool_errors = 0
     tools_enabled = bool(tool_server)
@@ -543,6 +548,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
 
         evidence_batch = []
         post_delivery_error = None
+        schema_repair = None
         for request_index, (name, arguments, fingerprint, delivery_id) in enumerate(pending, 1):
             attempted.add(fingerprint)
             candidate_id = delivery_id
@@ -560,6 +566,15 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 recorder.emit('tool.approved', tool_call_id=call_id,
                               approval_id=f'profile-{tool_profile}',
                               payload={'grant': tool_profile})
+            except ToolArgumentSchemaError as exc:
+                recorder.emit('tool.failed', tool_call_id=call_id,
+                              payload={'reason': 'schema_validation'})
+                if (len(requests) == 1 and not schema_repair_attempted
+                        and logical_step < max_tool_steps):
+                    schema_repair = (call_id, str(exc))
+                else:
+                    error = f'tool call failed: {type(exc).__name__}: {exc}'
+                break
             except Exception as exc:
                 error = f'tool call failed: {type(exc).__name__}: {exc}'
                 recorder.emit('tool.failed', tool_call_id=call_id,
@@ -632,6 +647,18 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
         step['tool_calls'] = len(evidence_batch)
         if error:
             break
+        if schema_repair:
+            schema_repair_attempted = True
+            call_id, reason = schema_repair
+            messages.append(packet['choices'][0]['message'] if native_requests else
+                            {'role': 'assistant', 'content': answer})
+            feedback = (reason + '. Correct the arguments for the same allowed tool once. '
+                        'Do not claim the tool ran or invent a result.')
+            if native_requests:
+                messages.append({'role': 'tool', 'tool_call_id': call_id, 'content': feedback})
+            else:
+                messages.append({'role': 'user', 'content': feedback})
+            continue
         if native_requests:
             messages.append(packet['choices'][0]['message'])
         else:
@@ -736,6 +763,7 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
             'document_evidence_coverage': _document_evidence_coverage(tool_calls),
             'tool_batch_limit': MAX_TOOL_BATCH_CALLS,
             'tool_format_repair_attempted': repair_attempted,
+            'tool_schema_repair_attempted': schema_repair_attempted,
             'truncation_repair_attempted': truncation_repair_attempted}
 
 

@@ -13,7 +13,8 @@ local children now call prepared Gateway routes through this loop rather than
 launching an external candidate harness. Gateway admission and Orchestration
 placement remain outside the loop. The loop verifies ready route identity,
 advertises only reviewed MCP schemas, checks model arguments against those schemas
-before dispatch, validates every call against its grant, limits each proposed
+before dispatch and offers one bounded correction for a malformed proposal,
+validates every call against its grant, limits each proposed
 batch to four calls and each run to six tool-capable model turns plus one tool-free finalization turn, rejects duplicate execution,
 forces a final tool-free synthesis turn when a model replays a completed call,
 and records a model-neutral receipt. This is the production development path.

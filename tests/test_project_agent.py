@@ -614,7 +614,7 @@ class ProjectAgentTests(unittest.TestCase):
                 gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
                 prompt='inspect', agent_type='coding', tool_profile='workspace_read',
                 tool_server=server, workspace_root=root, journal_root=root / 'journal',
-                complete=lambda *_: packet(request))
+                max_tool_calls=1, complete=lambda *_: packet(request))
             events = [json.loads(line) for line in
                       Path(result['run']['journal_ref']).read_text().splitlines()]
         call.assert_not_called()
@@ -623,6 +623,67 @@ class ProjectAgentTests(unittest.TestCase):
         event_types = [row['type'] for row in events]
         self.assertIn('tool.failed', event_types)
         self.assertNotIn('tool.executing', event_types)
+
+    def test_tool_schema_error_gets_one_bounded_correction(self):
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
+                  'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
+                                   'inputSchema': {'type': 'object', 'properties': {
+                                       'path': {'type': 'string', 'minLength': 1}},
+                                       'required': ['path'], 'additionalProperties': False}}],
+                  'command': ['fixture']}
+        invalid = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
+                              'arguments': {}})
+        valid = json.dumps({'name': 'mcp__workspace_read__read_workspace_file',
+                            'arguments': {'path': 'README.md'}})
+        replies = iter([packet(invalid), packet(valid), packet('Grounded answer.')])
+        seen = []
+        def complete(_gateway, _route, messages, *_args):
+            seen.append(list(messages))
+            return next(replies)
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool', return_value={
+                 'isError': False, 'structuredContent': {'path': 'README.md'}}) as call:
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='inspect', agent_type='coding', tool_profile='workspace_read',
+                tool_server=server, workspace_root=Path(temp), complete=complete)
+        call.assert_called_once()
+        self.assertIsNone(result['error'])
+        self.assertTrue(result['tool_schema_repair_attempted'])
+        self.assertIn('advertised input schema', seen[1][-1]['content'])
+
+    def test_native_tool_schema_correction_preserves_call_id(self):
+        server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
+                  'definitions': [{'name': 'read_workspace_file', 'description': 'Read',
+                                   'inputSchema': {'type': 'object', 'properties': {
+                                       'path': {'type': 'string', 'minLength': 1}},
+                                       'required': ['path'], 'additionalProperties': False}}],
+                  'command': ['fixture']}
+        def native(ident, arguments):
+            return {'choices': [{'message': {'role': 'assistant', 'content': None,
+                    'tool_calls': [{'id': ident, 'type': 'function', 'function': {
+                        'name': 'mcp__workspace_read__read_workspace_file',
+                        'arguments': json.dumps(arguments)}}]}, 'finish_reason': 'tool_calls'}]}
+        replies = iter([native('bad_call', {}), native('good_call', {'path': 'README.md'}),
+                        packet('Grounded answer.')])
+        seen = []
+        def complete(_gateway, _route, messages, *_args):
+            seen.append(list(messages))
+            return next(replies)
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('project_agent.fetch_ready_roster', return_value=READY), \
+             patch('project_agent.call_tool', return_value={
+                 'isError': False, 'structuredContent': {'path': 'README.md'}}) as call:
+            result = project_agent.run_agent(
+                gateway='http://gateway', route='gpu-rig/test', expected_model='test:1b',
+                prompt='inspect', agent_type='coding', tool_profile='workspace_read',
+                tool_server=server, workspace_root=Path(temp), complete=complete)
+        call.assert_called_once()
+        self.assertIsNone(result['error'])
+        self.assertEqual(seen[1][-1]['role'], 'tool')
+        self.assertEqual(seen[1][-1]['tool_call_id'], 'bad_call')
+        self.assertIn('advertised input schema', seen[1][-1]['content'])
 
     def test_tool_schema_accepts_valid_arguments(self):
         server = {'name': 'workspace_read', 'tools': ['read_workspace_file'],
