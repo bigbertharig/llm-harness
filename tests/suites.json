@@ -12,7 +12,8 @@
       "tests/test_product_ownership.py",
       "tests/test_direct_provider.py",
       "tests/test_run_api.py",
-      "tests/test_engine_adapter.py"
+      "tests/test_engine_adapter.py",
+      "tests/test_jev_tool_selector.py"
     ]
   },
   "local_tools": {
@@ -22,7 +23,8 @@
       "tests/test_workspace_git_mcp.py",
       "tests/test_rig_info_mcp.py",
       "tests/test_host_control_config.py",
-      "tests/test_gateway_reset_mcp.py"
+      "tests/test_gateway_reset_mcp.py",
+      "tests/test_workspace_coding_mcp.py"
     ]
   },
   "github_public": {

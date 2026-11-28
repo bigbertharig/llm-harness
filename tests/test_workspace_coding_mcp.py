@@ -144,7 +144,7 @@ class SelectedRunTests(unittest.TestCase):
                 restarted.submit({**second_task, 'request_id': 'missing-parent',
                                   'parent_run_id': 'missing'})
 
-    def test_continuation_keeps_only_four_recent_exchanges(self):
+    def test_continuation_keeps_entire_completed_chat(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             observed = []
@@ -165,8 +165,7 @@ class SelectedRunTests(unittest.TestCase):
                 parent = api.submit(task)['run_id']
                 api.execute(parent)
             self.assertEqual([turn['prompt'] for turn in observed[-1]['prior_turns']],
-                             ['fact-1', 'fact-2', 'fact-3', 'fact-4'])
-            self.assertNotIn('fact-0', str(observed[-1]['prior_turns']))
+                             ['fact-0', 'fact-1', 'fact-2', 'fact-3', 'fact-4'])
 
     def test_model_receives_prior_exchange_before_current_task(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -192,6 +191,45 @@ class SelectedRunTests(unittest.TestCase):
             self.assertEqual(messages[2]['content'], 'earlier result')
             self.assertIn('current', messages[3]['content'])
             self.assertEqual(receipt['prior_turns_used'], 1)
+
+
+    def test_model_receives_oldest_turn_after_six_exchanges(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            calls = []
+            def complete(*args):
+                calls.append(args)
+                return {'model': 'local-test', 'choices': [{
+                    'finish_reason': 'stop', 'message': {'content': 'done'}}]}
+            roster = {'data': [{'id': 'gpu-rig/local-test', 'model': 'local-test',
+                                'context_length': 8192, 'output_limit': 1024}]}
+            turns = [{'prompt': f'fact-{index}', 'answer': f'answer-{index}'}
+                     for index in range(6)]
+            with patch('project_agent.fetch_ready_roster', return_value=roster):
+                receipt = run_agent(
+                    gateway='http://fake', route='gpu-rig/local-test',
+                    expected_model='local-test', prompt='recall fact-0',
+                    agent_type='coding', tool_profile='none',
+                    journal_root=Path(temporary), prior_turns=turns,
+                    complete=complete)
+            messages = calls[0][2]
+            self.assertEqual(messages[1]['content'], 'fact-0')
+            self.assertEqual(messages[-2]['content'], 'answer-5')
+            self.assertEqual(receipt['prior_turns_used'], 6)
+
+    def test_context_overflow_fails_without_silently_dropping_turns(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            roster = {'data': [{'id': 'gpu-rig/local-test', 'model': 'local-test',
+                                'context_length': 8192, 'output_limit': 1024}]}
+            with patch('project_agent.fetch_ready_roster', return_value=roster):
+                with self.assertRaisesRegex(ValueError, 'conversation exceeds'):
+                    run_agent(
+                        gateway='http://fake', route='gpu-rig/local-test',
+                        expected_model='local-test', prompt='current',
+                        agent_type='coding', tool_profile='none',
+                        journal_root=Path(temporary),
+                        prior_turns=[{'prompt': 'old fact: ' + 'x' * 10000,
+                                      'answer': 'acknowledged'}],
+                        complete=lambda *args: self.fail('provider must not be called'))
 
 
 

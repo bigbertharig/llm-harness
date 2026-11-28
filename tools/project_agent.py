@@ -340,14 +340,13 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
     advertised_tools = _openai_tools(tool_server)
     external_messages, external_provenance = prepare_evidence(evidence_blocks)
     prior_turns = prior_turns or []
-    if not isinstance(prior_turns, list) or len(prior_turns) > 4:
+    if not isinstance(prior_turns, list):
         raise ValueError('invalid prior-turn context')
     prior_messages = []
     for turn in prior_turns:
         if (not isinstance(turn, dict) or
                 not isinstance(turn.get('prompt'), str) or
-                not isinstance(turn.get('answer'), str) or
-                len(turn['prompt']) > 3000 or len(turn['answer']) > 3000):
+                not isinstance(turn.get('answer'), str)):
             raise ValueError('invalid prior-turn exchange')
         prior_messages.extend([
             {'role': 'user', 'content': turn['prompt']},
@@ -357,6 +356,18 @@ def run_agent(*, gateway: str, route: str, expected_model: str, prompt: str,
                 *prior_messages,
                 {'role': 'user', 'content': current_envelope},
                 *external_messages]
+    # A new inference request has no provider-side memory. Preserve every durable
+    # exchange until the selected model's actual context window is exhausted.
+    # UTF-8 bytes upper-bound content token count for byte-based tokenizers; leave
+    # room for message framing and the model response.
+    context_length = ready.get('context_length')
+    if isinstance(context_length, int) and context_length > 0:
+        input_bytes = sum(len(row['content'].encode('utf-8')) for row in messages)
+        reserve = max_tokens + max(256, context_length // 20) + 32 * len(messages)
+        if input_bytes + reserve > context_length:
+            raise ValueError(
+                'conversation exceeds this model context window; explicit compaction '
+                'or a larger-context route is required')
     recorder = RunRecorder(journal_root, run_id=run_id, conversation_id=conversation_id)
     recorder.emit('run.started', payload={'engine': 'big-bertha-project-agent'})
     budget = ToolBudget(max_tool_calls)

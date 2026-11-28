@@ -83,9 +83,10 @@ The service configuration owns provider credentials and tool commands. With
 with `allowed_workspace_roots`, it selects only a configured workspace.
 
 A Coding run may send `parent_run_id` to continue a successful run in the same
-conversation and workspace. Harness stores the link and supplies up to four recent
-user/assistant exchanges (12,000 characters total) to the model; each run keeps its
-own durable receipt. This is bounded turn continuity, not automatic compaction.
+conversation and workspace. Harness stores the link and reconstructs all completed user/assistant exchanges
+for each new model request; each run keeps its own durable receipt. If the complete
+conversation cannot fit the selected model context window, the run fails explicitly
+instead of silently dropping old turns. Automatic compaction is not yet available.
 
 The `harness-control/1` API supports `POST /v1/runs`, `GET /v1/runs/ID`,
 `GET /v1/runs/ID/events?after=N`, and `POST /v1/runs/ID/{input,cancel,resume}`.

@@ -171,13 +171,13 @@ class RunAPI:
                 thread.start()
         return self.status(run_id)
 
-    def prior_turns(self, task, *, max_turns=4, max_chars=12000):
-        """Rebuild a bounded linear path from durable completed run records."""
+    def prior_turns(self, task):
+        """Rebuild the complete linear chat from durable completed run records."""
         parent_id = task.get('parent_run_id')
         turns = []
         seen = set()
         with self.connect() as db:
-            while parent_id and len(turns) < max_turns:
+            while parent_id:
                 if parent_id in seen:
                     raise ValueError('continuation cycle')
                 seen.add(parent_id)
@@ -188,13 +188,10 @@ class RunAPI:
                 if (prior_task.get('conversation_id') != task.get('conversation_id') or
                         prior_task.get('workspace_root') != task.get('workspace_root')):
                     raise ValueError('continuation path changed conversation or workspace')
-                turns.append({'prompt': prior_task['prompt'][-3000:],
-                              'answer': receipt.get('answer', '')[-3000:]})
+                turns.append({'prompt': prior_task['prompt'],
+                              'answer': receipt.get('answer', '')})
                 parent_id = prior_task.get('parent_run_id')
         turns.reverse()
-        # Preserve the newest complete exchanges; never cut through a message.
-        while turns and sum(len(row['prompt']) + len(row['answer']) for row in turns) > max_chars:
-            turns.pop(0)
         return turns
 
     def execute(self, run_id):
