@@ -28,6 +28,7 @@ from ready_roster import fetch_ready_roster
 from subagent_contract import CONTRACT_VERSION, child_system_prompt, child_task_envelope
 from workspace_read_mcp import TOOLS as WORKSPACE_TOOL_DEFINITIONS
 from workspace_git_mcp import TOOLS as WORKSPACE_GIT_TOOL_DEFINITIONS
+from workspace_coding_mcp import TOOLS as WORKSPACE_CODING_TOOL_DEFINITIONS
 
 
 WORKSPACE_TOOLS = ('list_workspace_files', 'find_workspace_files',
@@ -774,9 +775,10 @@ def main() -> int:
     parser.add_argument('--route', required=True)
     parser.add_argument('--model', required=True)
     parser.add_argument('--agent-type', choices=['coding', 'research'], required=True)
-    parser.add_argument('--tool-profile', choices=['none', 'workspace_read', 'workspace_git'], default='none')
+    parser.add_argument('--tool-profile', choices=['none', 'workspace_read', 'workspace_git', 'workspace_coding'], default='none')
     parser.add_argument('--tool-selector', choices=['model', 'jev'], default='model')
     parser.add_argument('--workspace-root', type=Path)
+    parser.add_argument('--checks-file', type=Path, help='Operator-configured named checks for workspace_coding')
     parser.add_argument('--max-tokens', type=int, default=1024)
     parser.add_argument('--timeout', type=int, default=180)
     parser.add_argument('--max-tool-calls', type=int, default=12)
@@ -792,6 +794,18 @@ def main() -> int:
                   'command': [os.fspath(Path(os.sys.executable)),
                               os.fspath(Path(__file__).with_name('workspace_read_mcp.py')),
                               '--root', os.fspath(args.workspace_root.resolve(strict=True))]}
+    elif args.tool_profile == 'workspace_coding':
+        if args.workspace_root is None:
+            parser.error('--workspace-root is required for workspace_coding')
+        command = [os.fspath(Path(os.sys.executable)),
+                   os.fspath(Path(__file__).with_name('workspace_coding_mcp.py')),
+                   '--root', os.fspath(args.workspace_root.resolve(strict=True))]
+        if args.checks_file:
+            command.extend(['--checks', os.fspath(args.checks_file.resolve(strict=True))])
+        server = {'name': 'workspace_coding',
+                  'tools': [item['name'] for item in WORKSPACE_CODING_TOOL_DEFINITIONS],
+                  'definitions': WORKSPACE_CODING_TOOL_DEFINITIONS,
+                  'command': command}
     elif args.tool_profile == 'workspace_git':
         if args.workspace_root is None:
             parser.error('--workspace-root is required for workspace_git')

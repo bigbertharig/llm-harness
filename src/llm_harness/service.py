@@ -4,6 +4,7 @@ import hmac
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 from harness_core.run_api import RunAPI, SCHEMA
@@ -72,6 +73,22 @@ def main():
     config = json.loads(args.config.read_text())
     if config.get('workspace_root'):
         config['workspace_root'] = Path(config['workspace_root']).resolve(strict=True)
+    coding = config.pop('workspace_coding', None)
+    if coding is not None:
+        if not isinstance(coding, dict) or not config.get('allowed_workspace_roots'):
+            parser.error('workspace_coding requires a configured workspace allowlist')
+        from workspace_coding_mcp import TOOLS as CODING_TOOLS
+        command = [sys.executable, '-m', 'workspace_coding_mcp',
+                   '--root', '{workspace_root}']
+        if coding.get('checks_file'):
+            command.extend(['--checks', str(Path(coding['checks_file']).resolve(strict=True))])
+        config.setdefault('allowed_profiles', ['none']).append('workspace_coding')
+        config.setdefault('tool_servers', {})['workspace_coding'] = {
+            'name': 'workspace_coding',
+            'tools': [item['name'] for item in CODING_TOOLS],
+            'definitions': CODING_TOOLS,
+            'command': command,
+        }
     args.state.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (args.state / 'service.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

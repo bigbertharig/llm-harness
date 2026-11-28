@@ -67,6 +67,15 @@ attempt; an interrupted write never becomes a blind retry. Events carry sequence
 resume uses a validated cursor/checkpoint. Each attempt has one terminal receipt. New input
 and cancellation acknowledgements must distinguish accepted, pending and terminal state.
 
+Gateway can optionally route a local Coding conversation through this owned Harness
+service. Each run carries the dropdown's selected ready route/model and selected
+workspace; the service admits any currently ready model only when
+`allow_ready_routes` is configured, and permits only explicitly configured
+workspace roots. `workspace_coding` is an operator-configured grant for guarded
+edits and named checks. Gateway keeps the conversation, browser workbench and cloud
+coding engines; Harness owns the local coding run and durable tool journal. The
+same Harness service handles different ready local models without a per-model copy.
+
 Harness inference adapters support configured providers. The Gateway adapter retains
 ready-roster identity validation and ready-only calls. Direct providers supply explicit
 identity, context/output limits and capabilities without rig discovery. Missing capabilities
@@ -74,8 +83,10 @@ produce a typed unsupported outcome. Model credentials stay in the provider/conn
 
 MCP tools can run independently of the Harness engine. A tool calls the owning service's
 public operation for accounts, conversations or hardware; it does not read or mutate that
-service's private files. In the integrated owned-Harness path, Gateway records approvals, Harness checks the
-call against the grant, and the owning service authorizes the effect. An external
+service's private files. In the integrated owned-Harness path, the service-configured
+coding profile is an explicit scoped grant; Gateway records any separate interactive
+approvals, Harness checks each call against its grant, and the owning service authorizes
+the effect. An external
 MCP client must supply its own caller-side checks.
 
 Freeze schemas, version negotiation, authenticated transport, error categories and producer/

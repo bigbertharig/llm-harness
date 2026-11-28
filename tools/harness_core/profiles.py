@@ -26,6 +26,11 @@ TOOL_PROFILES = {
         "get_workspace_git_commit", "compare_workspace_git_revisions",
         "read_workspace_file_at_revision", "get_workspace_file_history",
     }), "repository", requires_workspace=True),
+    "workspace_coding": ToolProfile("workspace_coding", frozenset({
+        "list_workspace_files", "find_workspace_files", "read_workspace_file",
+        "read_workspace_document_chunk", "search_workspace_text",
+        "replace_workspace_text", "write_workspace_file", "run_workspace_check",
+    }), "repository", requires_workspace=True, permits_writes=True),
     "google_workspace": ToolProfile("google_workspace", frozenset({
         "search_mail", "read_mail", "send_email", "search_drive", "read_drive_text",
         "create_drive_folder", "upload_drive_text", "upload_drive_image", "create_google_doc",

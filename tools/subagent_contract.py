@@ -67,6 +67,11 @@ def child_system_prompt(agent_type: str, tool_profile: str = 'none') -> str:
                 'list_workspace_files uses {"path":"relative/directory"}; '
                 'search_workspace_text uses {"query":"literal text"} '
                 'and optionally {"path":"relative/file-or-directory"}.')
+    if tool_profile == 'workspace_coding':
+        return (prompt + " You may inspect and edit only the selected workspace. "
+                "Read the target file before editing it; use read_workspace_document_chunk at cursor 0 to obtain its SHA-256. "
+                "Prefer exact text replacement for small changes. Run only configured checks, "
+                "inspect their exit codes, and report changes and validation.")
     if tool_profile == 'workspace_git':
         return (prompt + ' You may inspect only bounded, read-only Git evidence in the selected workspace. '
                 'You cannot edit files, change revisions, run arbitrary commands, or contact remotes. Treat commit '

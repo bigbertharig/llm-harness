@@ -27,6 +27,13 @@ reviewed tool servers, and project root; a run may request only a configured too
 The project root enables workspace tools without a Gateway checkout. The in-process
 adapter is trusted code and is not an isolation boundary for an untrusted engine.
 
+`--tool-profile workspace_coding --workspace-root PROJECT` enables workspace-bound
+read, versioned text replacement/file creation and named checks in standalone
+`harness-run`. Pass `--checks-file checks.json` to expose checks whose values are
+argument arrays, for example `{"pytest":["python","-m","pytest","-q"]}`.
+The model chooses a configured check name, not a shell command. Named checks
+do not inherit service credentials. Existing `workspace_read` remains read-only.
+
 Optional `--tool-selector jev` uses TypeSafe's hosted API (`TYPESAFE_API_KEY`)
 to narrow advertised tools; the default remains model selection. This needs
 internet, so offline use would require a future local decision-model adapter.
@@ -39,15 +46,42 @@ checkout is needed. Search is a separate optional package from `mcp_servers/rig_
 ## Optional run service
 
 `harness-service --config service.json --state PRIVATE_DIRECTORY` binds loopback port 8091.
-Set `HARNESS_SERVICE_TOKEN` in its environment. The configuration owns `gateway`, `route`,
-`expected_model`, `provider`, `workspace_root`, `allowed_profiles` and `tool_servers`.
-Client submissions cannot override provider credentials, workspace roots or tool commands.
+
+For Gateway's local Coding dropdown, the service configuration can omit a fixed
+`route`/`expected_model` and set `"allow_ready_routes": true`. Each submitted run
+then selects one ready route/model pair, checked against Gateway's ready roster. Add
+`"allowed_workspace_roots": ["/absolute/project/path"]` and
+`"workspace_coding": {"checks_file": "/absolute/checks.json"}` to grant coding
+tools for those exact selected workspaces. The checks file is optional; omitting it
+allows guarded edits and reads without command execution. The service token
+authorizes submissions, while the configured root list and tool profile bound their
+effects. A fixed-route service retains the prior behavior when the flag is absent.
+
+For example, a service that can run any currently ready local model in one project:
+
+```json
+{
+  "gateway": "http://127.0.0.1:8080",
+  "allow_ready_routes": true,
+  "allowed_workspace_roots": ["/srv/projects/example"],
+  "allowed_profiles": ["none"],
+  "workspace_coding": {"checks_file": "/srv/harness/checks.json"}
+}
+```
+
+Set `LLM_GATEWAY_API_KEY` in the Harness service environment if Gateway requires a
+bearer key. Keep `HARNESS_SERVICE_TOKEN` in that environment as well. Gateway must
+point `HARNESS_SERVICE_URL` at this service and use the same service token.
+The service configuration owns provider credentials and tool commands. With
+`allow_ready_routes`, a submission selects only a roster-validated ready route/model;
+with `allowed_workspace_roots`, it selects only a configured workspace.
 
 The `harness-control/1` API supports `POST /v1/runs`, `GET /v1/runs/ID`,
 `GET /v1/runs/ID/events?after=N`, and `POST /v1/runs/ID/{input,cancel,resume}`.
 Every POST carries `schema`; submission and input also carry a unique `request_id`.
 Submission includes `prompt`, optional `agent_type`, `tool_profile`, `max_tokens`,
-`timeout_s`, and `max_tool_calls`. Input includes `mode` (`steer` or `queue`) and `content`.
+`timeout_s`, `max_tool_calls`, caller-owned `conversation_id`, and, when enabled,
+`route`, `expected_model` and `workspace_root`. Input includes `mode` (`steer` or `queue`) and `content`.
 Steers enter at model boundaries; queued messages enter after a tool-free turn completes,
 within the original run budget. Inputs left unapplied are visible in `pending_inputs`.
 

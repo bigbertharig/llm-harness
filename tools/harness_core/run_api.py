@@ -17,6 +17,16 @@ def identifier(value):
     return value
 
 
+def bind_workspace(value, root):
+    if isinstance(value, str):
+        return value.replace('{workspace_root}', str(root))
+    if isinstance(value, list):
+        return [bind_workspace(item, root) for item in value]
+    if isinstance(value, dict):
+        return {key: bind_workspace(item, root) for key, item in value.items()}
+    return value
+
+
 class RunAPI:
     def __init__(self, root, engine, configuration):
         self.root = Path(root)
@@ -40,8 +50,27 @@ class RunAPI:
         if not isinstance(task, dict) or task.get('schema') != SCHEMA:
             raise ValueError('unsupported run schema')
         request_id = identifier(task.get('request_id'))
-        if set(task) - {'schema', 'request_id', 'prompt', 'agent_type', 'tool_profile', 'max_tokens', 'timeout_s', 'max_tool_calls'}:
+        if task.get('conversation_id') is not None:
+            identifier(task['conversation_id'])
+        if set(task) - {'schema', 'request_id', 'prompt', 'agent_type', 'tool_profile', 'max_tokens', 'timeout_s', 'max_tool_calls', 'route', 'expected_model', 'workspace_root', 'conversation_id'}:
             raise ValueError('unsupported task fields; provider, workspace and tools are service configuration')
+        route, model = task.get('route'), task.get('expected_model')
+        if (route is None) != (model is None):
+            raise ValueError('route and expected_model must be selected together')
+        if route is None and self.configuration.get('allow_ready_routes') and not self.configuration.get('route'):
+            raise ValueError('a ready route and model are required')
+        if route is not None:
+            if not self.configuration.get('allow_ready_routes') or self.configuration.get('provider') is not None:
+                raise ValueError('per-run route selection is not configured')
+            if not all(isinstance(value, str) and 1 <= len(value) <= 256 for value in (route, model)):
+                raise ValueError('invalid route or model')
+        workspace = task.get('workspace_root')
+        if workspace is not None:
+            if not isinstance(workspace, str):
+                raise ValueError('invalid workspace root')
+            allowed = {str(Path(root).resolve(strict=True)) for root in self.configuration.get('allowed_workspace_roots', [])}
+            if str(Path(workspace).resolve(strict=True)) not in allowed:
+                raise ValueError('workspace is not configured for Harness runs')
         prompt = task.get('prompt')
         if not isinstance(prompt, str) or not 1 <= len(prompt) <= 100000:
             raise ValueError('prompt must be 1..100000 characters')
@@ -144,11 +173,18 @@ class RunAPI:
                     db.execute('UPDATE inputs SET applied=1 WHERE id=?', (item[0],))
             return [dict(zip(('id','mode','content'), row)) for row in rows]
         try:
-            settings = {k:v for k,v in self.configuration.items() if k not in ('allowed_profiles','tool_servers')}
+            settings = {k:v for k,v in self.configuration.items() if k not in ('allowed_profiles','tool_servers','allow_ready_routes','allowed_workspace_roots')}
             profile = task.get('tool_profile','none')
             settings['agent_type'] = task.get('agent_type', 'coding')
             settings['tool_server'] = self.configuration.get('tool_servers', {}).get(profile)
-            receipt = self.engine(**settings, **{k:v for k,v in task.items() if k not in ('schema','request_id','agent_type')},
+            if task.get('workspace_root') is not None:
+                settings['workspace_root'] = Path(task['workspace_root']).resolve(strict=True)
+                if settings['tool_server'] is not None:
+                    settings['tool_server'] = bind_workspace(settings['tool_server'], settings['workspace_root'])
+            if route := task.get('route'):
+                settings['route'] = route
+                settings['expected_model'] = task['expected_model']
+            receipt = self.engine(**settings, **{k:v for k,v in task.items() if k not in ('schema','request_id','agent_type','route','expected_model','workspace_root')},
                                   run_id=run_id, journal_root=self.root/'journals',
                                   cancel_path=self.root/(run_id+'.cancel'), input_source=inputs)
             state = receipt['run']['phase']
